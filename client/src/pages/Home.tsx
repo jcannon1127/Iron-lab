@@ -1,14 +1,15 @@
 /**
- * Iron Lab — Bench Press Tracker
- * Design: Dark industrial, Oswald display font, electric orange accent
- * Layout: Full-width dashboard, sticky header with live stats, two-column main
- * Data stored in localStorage for persistence across visits
+ * Iron Lab — Bench Press Tracker (Full-Stack)
+ * Data is stored in the cloud database via tRPC.
+ * Users must be logged in to track their sessions.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
@@ -25,59 +26,31 @@ import {
   Trophy,
   Calendar,
   BarChart3,
+  LogIn,
+  Loader2,
 } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface Set {
-  id: string;
+// ─── Types (from DB) ──────────────────────────────────────────────────────────
+interface WorkoutSet {
+  id: number;
+  sessionId: number;
+  userId: number;
   weight: number;
   reps: number;
-  volume: number; // weight × reps
-  timestamp: number;
+  volume: number;
+  performedAt: number;
 }
 
-interface Session {
-  id: string;
-  date: string; // ISO date string YYYY-MM-DD
-  label: string; // e.g. "Mon Jul 7"
-  sets: Set[];
+interface WorkoutSession {
+  id: number;
+  userId: number;
+  date: string;
+  label: string;
+  goal: number;
   totalReps: number;
   totalVolume: number;
-  goal: number;
   completed: boolean;
-}
-
-// ─── Storage helpers ──────────────────────────────────────────────────────────
-const STORAGE_KEY = "bench-press-sessions";
-
-function loadSessions(): Session[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSessions(sessions: Session[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-}
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
-function newSessionId(): string {
-  return `s-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function newSetId(): string {
-  return `set-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  sets: WorkoutSet[];
 }
 
 // ─── Animated Number ──────────────────────────────────────────────────────────
@@ -111,24 +84,23 @@ function SetCard({
   index,
   onDelete,
   isNew,
+  isDeleting,
 }: {
-  set: Set;
+  set: WorkoutSet;
   index: number;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
   isNew: boolean;
+  isDeleting: boolean;
 }) {
   return (
     <div
       className={`flex items-center gap-3 p-4 rounded-lg border border-border bg-card group transition-all duration-200 hover:border-primary/40 hover:bg-card/80 ${
         isNew ? "animate-slide-in animate-clank" : ""
-      }`}
+      } ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}
     >
-      {/* Set number */}
       <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
         <span className="font-display text-sm font-semibold text-primary">{index + 1}</span>
       </div>
-
-      {/* Weight */}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-1">
           <span className="font-display text-2xl font-bold text-foreground">{set.weight}</span>
@@ -136,8 +108,6 @@ function SetCard({
         </div>
         <div className="text-xs text-muted-foreground">weight</div>
       </div>
-
-      {/* Reps */}
       <div className="flex-1 min-w-0 text-center">
         <div className="flex items-baseline gap-1 justify-center">
           <span className="font-display text-2xl font-bold text-foreground">{set.reps}</span>
@@ -145,8 +115,6 @@ function SetCard({
         </div>
         <div className="text-xs text-muted-foreground">reps</div>
       </div>
-
-      {/* Volume */}
       <div className="flex-1 min-w-0 text-right">
         <div className="flex items-baseline gap-1 justify-end">
           <span className="font-display text-2xl font-bold text-primary">{set.volume.toLocaleString()}</span>
@@ -154,8 +122,6 @@ function SetCard({
         </div>
         <div className="text-xs text-muted-foreground">volume</div>
       </div>
-
-      {/* Delete */}
       <button
         onClick={() => onDelete(set.id)}
         className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
@@ -173,84 +139,53 @@ function SessionHistoryCard({
   isActive,
   compareSession,
 }: {
-  session: Session;
+  session: WorkoutSession;
   isActive: boolean;
-  compareSession: Session | null;
+  compareSession: WorkoutSession | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  const volumeDiff = compareSession
-    ? session.totalVolume - compareSession.totalVolume
-    : null;
-  const repsDiff = compareSession
-    ? session.totalReps - compareSession.totalReps
-    : null;
+  const volumeDiff = compareSession ? session.totalVolume - compareSession.totalVolume : null;
+  const repsDiff = compareSession ? session.totalReps - compareSession.totalReps : null;
 
   return (
     <div
       className={`rounded-lg border transition-all duration-200 ${
-        isActive
-          ? "border-primary/60 bg-primary/5"
-          : "border-border bg-card hover:border-border/80"
+        isActive ? "border-primary/60 bg-primary/5" : "border-border bg-card hover:border-border/80"
       }`}
     >
-      <div
-        className="p-4 cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
+      <div className="p-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            {isActive && (
-              <span className="flex-shrink-0 w-2 h-2 rounded-full bg-primary animate-pulse" />
-            )}
+            {isActive && <span className="flex-shrink-0 w-2 h-2 rounded-full bg-primary animate-pulse" />}
             <div>
-              <div className="font-display text-sm font-semibold text-foreground">
-                {session.label}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {session.sets.length} sets
-              </div>
+              <div className="font-display text-sm font-semibold text-foreground">{session.label}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{session.sets.length} sets</div>
             </div>
           </div>
-
           <div className="flex items-center gap-4 flex-shrink-0">
-            {/* Reps */}
             <div className="text-right">
               <div className="font-display text-lg font-bold text-foreground leading-none">
                 {session.totalReps}
                 <span className="text-xs font-normal text-muted-foreground ml-1">reps</span>
               </div>
               {repsDiff !== null && repsDiff !== 0 && (
-                <div
-                  className={`text-xs font-medium mt-0.5 ${
-                    repsDiff > 0 ? "text-success" : "text-destructive"
-                  }`}
-                >
-                  {repsDiff > 0 ? "+" : ""}
-                  {repsDiff}
+                <div className={`text-xs font-medium mt-0.5 ${repsDiff > 0 ? "text-success" : "text-destructive"}`}>
+                  {repsDiff > 0 ? "+" : ""}{repsDiff}
                 </div>
               )}
             </div>
-
-            {/* Volume */}
             <div className="text-right">
               <div className="font-display text-lg font-bold text-primary leading-none">
                 {session.totalVolume.toLocaleString()}
                 <span className="text-xs font-normal text-muted-foreground ml-1">lbs</span>
               </div>
               {volumeDiff !== null && volumeDiff !== 0 && (
-                <div
-                  className={`text-xs font-medium mt-0.5 ${
-                    volumeDiff > 0 ? "text-success" : "text-destructive"
-                  }`}
-                >
-                  {volumeDiff > 0 ? "+" : ""}
-                  {volumeDiff.toLocaleString()}
+                <div className={`text-xs font-medium mt-0.5 ${volumeDiff > 0 ? "text-success" : "text-destructive"}`}>
+                  {volumeDiff > 0 ? "+" : ""}{volumeDiff.toLocaleString()}
                 </div>
               )}
             </div>
-
-            {/* Goal badge */}
             <div className="flex flex-col items-end gap-1">
               {session.completed ? (
                 <Trophy className="w-4 h-4 text-yellow-400" />
@@ -260,40 +195,27 @@ function SessionHistoryCard({
                 </span>
               )}
               <button className="text-muted-foreground hover:text-foreground transition-colors">
-                {expanded ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
+                {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
             </div>
           </div>
         </div>
-
-        {/* Mini progress bar */}
         <div className="mt-3">
           <div className="h-1 rounded-full bg-border overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${Math.min((session.totalReps / session.goal) * 100, 100)}%`,
-                backgroundColor: session.completed
-                  ? "oklch(0.68 0.18 145)"
-                  : "oklch(0.72 0.18 45)",
+                backgroundColor: session.completed ? "oklch(0.68 0.18 145)" : "oklch(0.72 0.18 45)",
               }}
             />
           </div>
         </div>
       </div>
-
-      {/* Expanded set list */}
       {expanded && (
         <div className="px-4 pb-4 border-t border-border/50 pt-3 space-y-2">
           {session.sets.map((s, i) => (
-            <div
-              key={s.id}
-              className="flex items-center justify-between text-sm py-1"
-            >
+            <div key={s.id} className="flex items-center justify-between text-sm py-1">
               <span className="text-muted-foreground font-medium">Set {i + 1}</span>
               <span className="text-foreground">
                 <span className="font-display font-semibold">{s.weight}</span>
@@ -312,83 +234,108 @@ function SessionHistoryCard({
   );
 }
 
+// ─── Login Gate ───────────────────────────────────────────────────────────────
+function LoginGate() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center max-w-sm px-6">
+        <div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6">
+          <Dumbbell className="w-8 h-8 text-primary-foreground" />
+        </div>
+        <h1 className="font-display text-3xl font-bold text-foreground uppercase tracking-wide mb-2">
+          Iron Lab
+        </h1>
+        <p className="text-muted-foreground text-sm mb-8">
+          Track your bench press sessions and compare your progress across the week. Sign in to save your data to the cloud.
+        </p>
+        <Button
+          onClick={() => startLogin()}
+          className="w-full h-12 bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.96] transition-all"
+        >
+          <LogIn className="w-4 h-4 mr-2" />
+          Sign In to Start Tracking
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Home() {
   const REP_GOAL = 100;
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
 
-  // Load sessions from storage
-  const [sessions, setSessions] = useState<Session[]>(() => {
-    const stored = loadSessions();
-    // If no session for today, we'll create one when first set is added
-    return stored;
+  const utils = trpc.useUtils();
+
+  // Queries
+  const { data: todaySession, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
+  const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
+
+  // Mutations
+  const addSetMutation = trpc.workout.addSet.useMutation({
+    onSuccess: () => {
+      utils.workout.getTodaySession.invalidate();
+      utils.workout.getSessions.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteSetMutation = trpc.workout.deleteSet.useMutation({
+    onSuccess: () => {
+      utils.workout.getTodaySession.invalidate();
+      utils.workout.getSessions.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const resetMutation = trpc.workout.resetToday.useMutation({
+    onSuccess: () => {
+      utils.workout.getTodaySession.invalidate();
+      utils.workout.getSessions.invalidate();
+      toast.info("Today's session cleared");
+    },
+    onError: (e) => toast.error(e.message),
   });
 
   const [weightInput, setWeightInput] = useState("");
   const [repsInput, setRepsInput] = useState("");
-  const [newSetId_state, setNewSetId_state] = useState<string | null>(null);
+  const [newSetIdState, setNewSetIdState] = useState<number | null>(null);
+  const [deletingSetId, setDeletingSetId] = useState<number | null>(null);
   const weightRef = useRef<HTMLInputElement>(null);
 
-  // Today's session
-  const todayIso = todayKey();
-  const todaySession = sessions.find((s) => s.date === todayIso) ?? null;
-
-  // Previous sessions (not today), sorted newest first
-  const pastSessions = sessions
+  // Derived data
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const pastSessions = (allSessions ?? [])
     .filter((s) => s.date !== todayIso)
     .sort((a, b) => b.date.localeCompare(a.date));
-
-  // Most recent past session for comparison
   const compareSession = pastSessions[0] ?? null;
 
-  // Persist whenever sessions change
-  useEffect(() => {
-    saveSessions(sessions);
-  }, [sessions]);
+  const totalReps = todaySession?.totalReps ?? 0;
+  const totalVolume = todaySession?.totalVolume ?? 0;
+  const setCount = todaySession?.sets.length ?? 0;
+  const progressPct = Math.min((totalReps / REP_GOAL) * 100, 100);
+  const repsRemaining = Math.max(REP_GOAL - totalReps, 0);
+  const goalAchieved = totalReps >= REP_GOAL;
+  const volumeDiff = compareSession ? totalVolume - compareSession.totalVolume : null;
+  const repsDiff = compareSession ? totalReps - compareSession.totalReps : null;
 
-  // Pre-populate Jeff's current session on first load if no today session exists
+  const prevGoalRef = useRef(false);
   useEffect(() => {
-    const stored = loadSessions();
-    const alreadyHasToday = stored.some((s) => s.date === todayIso);
-    if (!alreadyHasToday) {
-      const initialSets: Set[] = [
-        {
-          id: newSetId(),
-          weight: 45,
-          reps: 20,
-          volume: 45 * 20,
-          timestamp: Date.now() - 600000,
-        },
-        {
-          id: newSetId(),
-          weight: 95,
-          reps: 15,
-          volume: 95 * 15,
-          timestamp: Date.now() - 300000,
-        },
-      ];
-      const totalReps = initialSets.reduce((sum, s) => sum + s.reps, 0);
-      const totalVolume = initialSets.reduce((sum, s) => sum + s.volume, 0);
-      const session: Session = {
-        id: newSessionId(),
-        date: todayIso,
-        label: formatDate(todayIso),
-        sets: initialSets,
-        totalReps,
-        totalVolume,
-        goal: REP_GOAL,
-        completed: totalReps >= REP_GOAL,
-      };
-      const updated = [...stored, session];
-      saveSessions(updated);
-      setSessions(updated);
+    if (goalAchieved && !prevGoalRef.current) {
+      toast.success("🏆 100 reps achieved! Goal crushed!");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    prevGoalRef.current = goalAchieved;
+  }, [goalAchieved]);
 
-  const addSet = useCallback(() => {
+  const handleAddSet = useCallback(() => {
     const weight = parseFloat(weightInput);
     const reps = parseInt(repsInput, 10);
-
     if (!weight || weight <= 0 || isNaN(weight)) {
       toast.error("Enter a valid weight");
       weightRef.current?.focus();
@@ -398,105 +345,48 @@ export default function Home() {
       toast.error("Enter valid reps");
       return;
     }
-
-    const newSet: Set = {
-      id: newSetId(),
-      weight,
-      reps,
-      volume: weight * reps,
-      timestamp: Date.now(),
-    };
-
-    setNewSetId_state(newSet.id);
-    setTimeout(() => setNewSetId_state(null), 600);
-
-    setSessions((prev) => {
-      const existing = prev.find((s) => s.date === todayIso);
-      if (existing) {
-        const updatedSets = [...existing.sets, newSet];
-        const totalReps = updatedSets.reduce((sum, s) => sum + s.reps, 0);
-        const totalVolume = updatedSets.reduce((sum, s) => sum + s.volume, 0);
-        const wasCompleted = existing.completed;
-        const nowCompleted = totalReps >= REP_GOAL;
-        if (!wasCompleted && nowCompleted) {
-          setTimeout(() => toast.success("🏆 100 reps achieved! Goal crushed!"), 100);
-        }
-        return prev.map((s) =>
-          s.date === todayIso
-            ? { ...s, sets: updatedSets, totalReps, totalVolume, completed: nowCompleted }
-            : s
-        );
-      } else {
-        const totalReps = reps;
-        const totalVolume = weight * reps;
-        const session: Session = {
-          id: newSessionId(),
-          date: todayIso,
-          label: formatDate(todayIso),
-          sets: [newSet],
-          totalReps,
-          totalVolume,
-          goal: REP_GOAL,
-          completed: totalReps >= REP_GOAL,
-        };
-        return [...prev, session];
+    addSetMutation.mutate(
+      { weight, reps },
+      {
+        onSuccess: (data) => {
+          setNewSetIdState(data.set.id);
+          setTimeout(() => setNewSetIdState(null), 600);
+          setWeightInput("");
+          setRepsInput("");
+          weightRef.current?.focus();
+        },
       }
-    });
+    );
+  }, [weightInput, repsInput, addSetMutation]);
 
-    setWeightInput("");
-    setRepsInput("");
-    weightRef.current?.focus();
-  }, [weightInput, repsInput, todayIso]);
-
-  const deleteSet = useCallback(
-    (setId: string) => {
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.date !== todayIso) return s;
-          const updatedSets = s.sets.filter((set) => set.id !== setId);
-          const totalReps = updatedSets.reduce((sum, set) => sum + set.reps, 0);
-          const totalVolume = updatedSets.reduce((sum, set) => sum + set.volume, 0);
-          return {
-            ...s,
-            sets: updatedSets,
-            totalReps,
-            totalVolume,
-            completed: totalReps >= REP_GOAL,
-          };
-        })
+  const handleDeleteSet = useCallback(
+    (setId: number) => {
+      setDeletingSetId(setId);
+      deleteSetMutation.mutate(
+        { setId },
+        { onSettled: () => setDeletingSetId(null) }
       );
     },
-    [todayIso]
+    [deleteSetMutation]
   );
 
-  const finishSession = useCallback(() => {
-    if (!todaySession || todaySession.sets.length === 0) {
-      toast.error("No sets logged yet");
-      return;
-    }
-    toast.success(`Session saved! ${todaySession.totalReps} reps, ${todaySession.totalVolume.toLocaleString()} lbs total volume`);
-  }, [todaySession]);
-
-  const resetToday = useCallback(() => {
-    setSessions((prev) => prev.filter((s) => s.date !== todayIso));
-    toast.info("Today's session cleared");
-  }, [todayIso]);
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") addSet();
+    if (e.key === "Enter") handleAddSet();
   };
 
-  // Derived stats
-  const totalReps = todaySession?.totalReps ?? 0;
-  const totalVolume = todaySession?.totalVolume ?? 0;
-  const setCount = todaySession?.sets.length ?? 0;
-  const progressPct = Math.min((totalReps / REP_GOAL) * 100, 100);
-  const repsRemaining = Math.max(REP_GOAL - totalReps, 0);
-  const goalAchieved = totalReps >= REP_GOAL;
+  // Auth loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
 
-  // Volume comparison
-  const volumeDiff = compareSession ? totalVolume - compareSession.totalVolume : null;
-  const repsDiff = compareSession ? totalReps - compareSession.totalReps : null;
+  // Not logged in
+  if (!isAuthenticated) {
+    return <LoginGate />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -504,7 +394,6 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="container">
           <div className="flex items-center justify-between h-14">
-            {/* Logo + Title */}
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
                 <Dumbbell className="w-4 h-4 text-primary-foreground" />
@@ -514,12 +403,10 @@ export default function Home() {
                   Bench Press
                 </h1>
                 <p className="text-xs text-muted-foreground leading-none mt-0.5">
-                  Iron Lab Tracker
+                  Iron Lab · {user?.name ?? "Tracker"}
                 </p>
               </div>
             </div>
-
-            {/* Live stats strip */}
             <div className="flex items-center gap-6">
               <div className="text-right hidden sm:block">
                 <div className="font-display text-xl font-bold text-foreground leading-none">
@@ -587,7 +474,6 @@ export default function Home() {
 
           {/* ── Left: Current Session ── */}
           <div className="space-y-5">
-            {/* Section header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-primary" />
@@ -595,13 +481,14 @@ export default function Home() {
                   Today's Session
                 </h2>
                 <span className="text-xs text-muted-foreground">
-                  {formatDate(todayIso)}
+                  {todaySession?.label ?? ""}
                 </span>
               </div>
               {setCount > 0 && (
                 <button
-                  onClick={resetToday}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  onClick={() => resetMutation.mutate()}
+                  disabled={resetMutation.isPending}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
                 >
                   <RotateCcw className="w-3 h-3" />
                   Reset
@@ -612,51 +499,21 @@ export default function Home() {
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                {
-                  label: "Total Reps",
-                  value: totalReps,
-                  suffix: "reps",
-                  icon: <Target className="w-4 h-4" />,
-                  color: "text-foreground",
-                  diff: repsDiff,
-                },
-                {
-                  label: "Total Volume",
-                  value: totalVolume,
-                  suffix: "lbs",
-                  icon: <TrendingUp className="w-4 h-4" />,
-                  color: "text-primary",
-                  diff: volumeDiff,
-                },
-                {
-                  label: "Sets Done",
-                  value: setCount,
-                  suffix: "sets",
-                  icon: <BarChart3 className="w-4 h-4" />,
-                  color: "text-foreground",
-                  diff: null,
-                },
+                { label: "Total Reps", value: totalReps, suffix: "reps", icon: <Target className="w-4 h-4" />, color: "text-foreground", diff: repsDiff },
+                { label: "Total Volume", value: totalVolume, suffix: "lbs", icon: <TrendingUp className="w-4 h-4" />, color: "text-primary", diff: volumeDiff },
+                { label: "Sets Done", value: setCount, suffix: "sets", icon: <BarChart3 className="w-4 h-4" />, color: "text-foreground", diff: null },
               ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-lg border border-border bg-card p-4"
-                >
+                <div key={stat.label} className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center gap-1.5 text-muted-foreground mb-2">
                     {stat.icon}
-                    <span className="text-xs font-medium uppercase tracking-wider">
-                      {stat.label}
-                    </span>
+                    <span className="text-xs font-medium uppercase tracking-wider">{stat.label}</span>
                   </div>
                   <div className={`font-display text-3xl font-bold ${stat.color} leading-none`}>
                     <AnimatedNumber value={stat.value} />
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">{stat.suffix}</div>
                   {stat.diff !== null && stat.diff !== 0 && (
-                    <div
-                      className={`text-xs font-medium mt-1 ${
-                        stat.diff > 0 ? "text-success" : "text-destructive"
-                      }`}
-                    >
+                    <div className={`text-xs font-medium mt-1 ${stat.diff > 0 ? "text-success" : "text-destructive"}`}>
                       {stat.diff > 0 ? "▲" : "▼"} {Math.abs(stat.diff).toLocaleString()} vs last
                     </div>
                   )}
@@ -674,9 +531,7 @@ export default function Home() {
               </h3>
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
-                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">
-                    Weight (lbs)
-                  </label>
+                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">Weight (lbs)</label>
                   <Input
                     ref={weightRef}
                     type="number"
@@ -690,9 +545,7 @@ export default function Home() {
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">
-                    Reps
-                  </label>
+                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">Reps</label>
                   <Input
                     type="number"
                     placeholder="e.g. 10"
@@ -704,11 +557,18 @@ export default function Home() {
                   />
                 </div>
                 <Button
-                  onClick={addSet}
-                  className="h-11 px-5 bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.96] transition-all duration-150"
+                  onClick={handleAddSet}
+                  disabled={addSetMutation.isPending}
+                  className="h-11 px-5 bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.96] transition-all duration-150 disabled:opacity-70"
                 >
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  Add Set
+                  {addSetMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-1.5" />
+                      Add Set
+                    </>
+                  )}
                 </Button>
               </div>
               {weightInput && repsInput && (
@@ -722,7 +582,11 @@ export default function Home() {
             </div>
 
             {/* Set list */}
-            {todaySession && todaySession.sets.length > 0 ? (
+            {todayLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
+              </div>
+            ) : todaySession && todaySession.sets.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h3 className="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -735,8 +599,9 @@ export default function Home() {
                     key={set.id}
                     set={set}
                     index={i}
-                    onDelete={deleteSet}
-                    isNew={set.id === newSetId_state}
+                    onDelete={handleDeleteSet}
+                    isNew={set.id === newSetIdState}
+                    isDeleting={set.id === deletingSetId}
                   />
                 ))}
               </div>
@@ -750,20 +615,23 @@ export default function Home() {
               </div>
             )}
 
-            {/* Finish session button */}
             {setCount > 0 && (
               <Button
-                onClick={finishSession}
                 variant="outline"
                 className="w-full font-display font-semibold uppercase tracking-wide border-primary/40 text-primary hover:bg-primary/10 hover:border-primary"
+                onClick={() =>
+                  toast.success(
+                    `Session saved! ${totalReps} reps, ${totalVolume.toLocaleString()} lbs total volume. Come back tomorrow to compare!`
+                  )
+                }
               >
                 <Trophy className="w-4 h-4 mr-2" />
-                Save Session
+                Done for Today
               </Button>
             )}
           </div>
 
-          {/* ── Right: Session History & Comparison ── */}
+          {/* ── Right: Session History ── */}
           <div className="space-y-5">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -772,7 +640,6 @@ export default function Home() {
               </h2>
             </div>
 
-            {/* Comparison callout */}
             {compareSession && (
               <div className="rounded-lg border border-border bg-card/50 p-4">
                 <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-2">
@@ -781,27 +648,15 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs text-muted-foreground">Volume</div>
-                    <div
-                      className={`font-display text-xl font-bold ${
-                        volumeDiff !== null && volumeDiff >= 0 ? "text-success" : "text-destructive"
-                      }`}
-                    >
-                      {volumeDiff !== null
-                        ? `${volumeDiff >= 0 ? "+" : ""}${volumeDiff.toLocaleString()}`
-                        : "—"}
+                    <div className={`font-display text-xl font-bold ${volumeDiff !== null && volumeDiff >= 0 ? "text-success" : "text-destructive"}`}>
+                      {volumeDiff !== null ? `${volumeDiff >= 0 ? "+" : ""}${volumeDiff.toLocaleString()}` : "—"}
                       <span className="text-xs font-normal text-muted-foreground ml-1">lbs</span>
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Reps</div>
-                    <div
-                      className={`font-display text-xl font-bold ${
-                        repsDiff !== null && repsDiff >= 0 ? "text-success" : "text-destructive"
-                      }`}
-                    >
-                      {repsDiff !== null
-                        ? `${repsDiff >= 0 ? "+" : ""}${repsDiff}`
-                        : "—"}
+                    <div className={`font-display text-xl font-bold ${repsDiff !== null && repsDiff >= 0 ? "text-success" : "text-destructive"}`}>
+                      {repsDiff !== null ? `${repsDiff >= 0 ? "+" : ""}${repsDiff}` : "—"}
                       <span className="text-xs font-normal text-muted-foreground ml-1">reps</span>
                     </div>
                   </div>
@@ -809,19 +664,17 @@ export default function Home() {
               </div>
             )}
 
-            {/* Today's session in history */}
             {todaySession && (
-              <SessionHistoryCard
-                session={todaySession}
-                isActive={true}
-                compareSession={compareSession}
-              />
+              <SessionHistoryCard session={todaySession} isActive={true} compareSession={compareSession} />
             )}
 
             <Separator className="bg-border/50" />
 
-            {/* Past sessions */}
-            {pastSessions.length > 0 ? (
+            {sessionsLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-5 h-5 text-primary animate-spin" />
+              </div>
+            ) : pastSessions.length > 0 ? (
               <div className="space-y-3">
                 {pastSessions.map((session, i) => (
                   <SessionHistoryCard
@@ -837,7 +690,7 @@ export default function Home() {
                 <TrendingUp className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">No past sessions yet.</p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  Complete today's session and come back later this week to compare.
+                  Come back later this week to compare sessions.
                 </p>
               </div>
             )}

@@ -155,6 +155,20 @@ export async function updateSessionTotals(
     .where(eq(workoutSessions.id, sessionId));
 }
 
+/** Update just the goal for a session */
+export async function updateSessionGoal(
+  sessionId: number,
+  goal: number,
+  totalReps: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(workoutSessions)
+    .set({ goal, completed: totalReps >= goal })
+    .where(eq(workoutSessions.id, sessionId));
+}
+
 /** Delete a session and all its sets */
 export async function deleteSession(sessionId: number, userId: number): Promise<void> {
   const db = await getDb();
@@ -196,4 +210,38 @@ export async function deleteSet(setId: number, userId: number): Promise<void> {
   const db = await getDb();
   if (!db) return;
   await db.delete(workoutSets).where(and(eq(workoutSets.id, setId), eq(workoutSets.userId, userId)));
+}
+
+/** Edit a set's weight and reps */
+export async function editSet(
+  setId: number,
+  userId: number,
+  weight: number,
+  reps: number
+): Promise<WorkoutSet | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const volume = weight * reps;
+  await db
+    .update(workoutSets)
+    .set({ weight, reps, volume })
+    .where(and(eq(workoutSets.id, setId), eq(workoutSets.userId, userId)));
+  const result = await db
+    .select()
+    .from(workoutSets)
+    .where(and(eq(workoutSets.id, setId), eq(workoutSets.userId, userId)))
+    .limit(1);
+  return result[0];
+}
+
+/** Get a set by id */
+export async function getSetById(setId: number, userId: number): Promise<WorkoutSet | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(workoutSets)
+    .where(and(eq(workoutSets.id, setId), eq(workoutSets.userId, userId)))
+    .limit(1);
+  return result[0];
 }

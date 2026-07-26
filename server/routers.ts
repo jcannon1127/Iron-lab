@@ -9,9 +9,11 @@ import {
   getSessionSets,
   createSession,
   updateSessionTotals,
+  updateSessionGoal,
   deleteSession,
   addSet,
   deleteSet,
+  editSet,
 } from "./db";
 
 const REP_GOAL = 100;
@@ -110,6 +112,44 @@ export const appRouter = router({
         const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
         await updateSessionTotals(session.id, totalReps, totalVolume, REP_GOAL);
         return { totalReps, totalVolume, completed: totalReps >= REP_GOAL };
+      }),
+
+    /** Edit a set's weight and reps, recalculate session totals */
+    editSet: protectedProcedure
+      .input(z.object({ setId: z.number().int().positive(), weight: z.number().positive(), reps: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const session = await getSessionByDate(ctx.user.id, today);
+        if (!session) throw new Error("No session found for today");
+        await editSet(input.setId, ctx.user.id, input.weight, input.reps);
+        const allSets = await getSessionSets(session.id);
+        const totalReps = allSets.reduce((sum, s) => sum + s.reps, 0);
+        const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
+        await updateSessionTotals(session.id, totalReps, totalVolume, session.goal);
+        return { totalReps, totalVolume, completed: totalReps >= session.goal };
+      }),
+
+    /** Update the rep goal for today's session */
+    updateGoal: protectedProcedure
+      .input(z.object({ goal: z.number().int().min(1).max(1000) }))
+      .mutation(async ({ ctx, input }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        let session = await getSessionByDate(ctx.user.id, today);
+        if (!session) {
+          session = await createSession({
+            userId: ctx.user.id,
+            date: today,
+            label: formatDateLabel(today),
+            goal: input.goal,
+            totalReps: 0,
+            totalVolume: 0,
+            completed: false,
+          });
+        } else {
+          // Persist the goal column AND recompute completed flag
+          await updateSessionGoal(session.id, input.goal, session.totalReps);
+        }
+        return { goal: input.goal };
       }),
 
     /** Reset (delete) today's session */

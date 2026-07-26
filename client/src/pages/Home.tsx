@@ -1,6 +1,6 @@
 /**
  * Iron Lab — Bench Press Tracker
- * Login required. All data synced to cloud via tRPC.
+ * Features: inline set editing, custom rep goal, rest timer, share session
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
@@ -28,49 +28,203 @@ import {
   Cloud,
   Loader2,
   LogIn,
+  Pencil,
+  Check,
+  X,
+  Timer,
+  Share2,
+  Settings2,
 } from "lucide-react";
 
 // ─── Animated Number ──────────────────────────────────────────────────────────
 function AnimatedNumber({ value, className }: { value: number; className?: string }) {
   const [display, setDisplay] = useState(value);
   const prevRef = useRef(value);
-
   useEffect(() => {
     const start = prevRef.current;
     const end = value;
     if (start === end) return;
-    const duration = 400;
-    const startTime = performance.now();
+    const dur = 400;
+    const t0 = performance.now();
     const raf = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(start + (end - start) * eased));
-      if (progress < 1) requestAnimationFrame(raf);
+      const p = Math.min((now - t0) / dur, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(start + (end - start) * e));
+      if (p < 1) requestAnimationFrame(raf);
       else prevRef.current = end;
     };
     requestAnimationFrame(raf);
   }, [value]);
-
   return <span className={className}>{display.toLocaleString()}</span>;
+}
+
+// ─── Rest Timer ───────────────────────────────────────────────────────────────
+function RestTimer({ duration, onDone }: { duration: number; onDone: () => void }) {
+  const [remaining, setRemaining] = useState(duration);
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+
+  useEffect(() => {
+    setRemaining(duration);
+  }, [duration]);
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      doneRef.current();
+      return;
+    }
+    const id = setTimeout(() => setRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(id);
+  }, [remaining]);
+
+  const pct = ((duration - remaining) / duration) * 100;
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+
+  return (
+    <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Timer className="w-4 h-4 text-primary" />
+          <span className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">
+            Rest Timer
+          </span>
+        </div>
+        <button onClick={() => doneRef.current()} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          Skip
+        </button>
+      </div>
+      <div className="text-center mb-3">
+        <span className="font-display text-5xl font-bold text-primary tabular-nums">
+          {mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : secs}
+        </span>
+        {mins === 0 && <span className="text-sm text-muted-foreground ml-1">sec</span>}
+      </div>
+      <div className="h-2 rounded-full bg-border overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-1000"
+          style={{
+            width: `${pct}%`,
+            background: "linear-gradient(90deg, oklch(0.65 0.18 45), oklch(0.72 0.18 45))",
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
 // ─── Set Card ─────────────────────────────────────────────────────────────────
 function SetCard({
+  id,
   weight,
   reps,
   volume,
   index,
   onDelete,
+  onEdit,
   isNew,
 }: {
+  id: number;
   weight: number;
   reps: number;
   volume: number;
   index: number;
   onDelete: () => void;
+  onEdit: (weight: number, reps: number) => void;
   isNew: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editWeight, setEditWeight] = useState(String(weight));
+  const [editReps, setEditReps] = useState(String(reps));
+  const weightInputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setEditWeight(String(weight));
+    setEditReps(String(reps));
+    setEditing(true);
+    setTimeout(() => weightInputRef.current?.focus(), 50);
+  };
+
+  const commitEdit = () => {
+    const w = parseFloat(editWeight);
+    const r = parseInt(editReps, 10);
+    if (!w || w <= 0 || isNaN(w) || !r || r <= 0 || isNaN(r)) {
+      toast.error("Enter valid weight and reps");
+      return;
+    }
+    onEdit(w, r);
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") commitEdit();
+    if (e.key === "Escape") cancelEdit();
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/60 bg-primary/5">
+        <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <span className="font-display text-sm font-semibold text-primary">{index + 1}</span>
+        </div>
+        <div className="flex-1 flex gap-2 items-center">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground block mb-1">Weight</label>
+            <Input
+              ref={weightInputRef}
+              type="number"
+              value={editWeight}
+              onChange={(e) => setEditWeight(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="h-9 text-sm font-display bg-input border-border"
+              min="1"
+              step="5"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground block mb-1">Reps</label>
+            <Input
+              type="number"
+              value={editReps}
+              onChange={(e) => setEditReps(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="h-9 text-sm font-display bg-input border-border"
+              min="1"
+            />
+          </div>
+          {editWeight && editReps && (
+            <div className="text-right flex-shrink-0">
+              <div className="text-xs text-muted-foreground mb-1">Vol</div>
+              <div className="font-display text-sm font-bold text-primary">
+                {(parseFloat(editWeight) * parseInt(editReps, 10) || 0).toLocaleString()}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          <button
+            onClick={commitEdit}
+            className="p-2 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+            title="Save"
+          >
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={cancelEdit}
+            className="p-2 rounded bg-border text-muted-foreground hover:text-foreground transition-colors"
+            title="Cancel"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`flex items-center gap-3 p-4 rounded-lg border border-border bg-card group transition-all duration-200 hover:border-primary/40 hover:bg-card/80 ${
@@ -101,49 +255,40 @@ function SetCard({
         </div>
         <div className="text-xs text-muted-foreground">volume</div>
       </div>
-      <button
-        onClick={onDelete}
-        className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-        title="Remove set"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
+      <div className="ml-2 flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={startEdit}
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          title="Edit set"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          title="Remove set"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
 
 // ─── Session History Card ─────────────────────────────────────────────────────
 function SessionHistoryCard({
-  label,
-  totalReps,
-  totalVolume,
-  goal,
-  completed,
-  sets,
-  isActive,
-  compareReps,
-  compareVolume,
+  label, totalReps, totalVolume, goal, completed, sets, isActive, compareReps, compareVolume,
 }: {
-  label: string;
-  totalReps: number;
-  totalVolume: number;
-  goal: number;
-  completed: boolean;
+  label: string; totalReps: number; totalVolume: number; goal: number; completed: boolean;
   sets: { weight: number; reps: number; volume: number }[];
-  isActive: boolean;
-  compareReps: number | null;
-  compareVolume: number | null;
+  isActive: boolean; compareReps: number | null; compareVolume: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const volumeDiff = compareVolume !== null ? totalVolume - compareVolume : null;
   const repsDiff = compareReps !== null ? totalReps - compareReps : null;
 
   return (
-    <div
-      className={`rounded-lg border transition-all duration-200 ${
-        isActive ? "border-primary/60 bg-primary/5" : "border-border bg-card hover:border-border/80"
-      }`}
-    >
+    <div className={`rounded-lg border transition-all duration-200 ${isActive ? "border-primary/60 bg-primary/5" : "border-border bg-card hover:border-border/80"}`}>
       <div className="p-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -156,8 +301,7 @@ function SessionHistoryCard({
           <div className="flex items-center gap-4 flex-shrink-0">
             <div className="text-right">
               <div className="font-display text-lg font-bold text-foreground leading-none">
-                {totalReps}
-                <span className="text-xs font-normal text-muted-foreground ml-1">reps</span>
+                {totalReps}<span className="text-xs font-normal text-muted-foreground ml-1">reps</span>
               </div>
               {repsDiff !== null && repsDiff !== 0 && (
                 <div className={`text-xs font-medium mt-0.5 ${repsDiff > 0 ? "text-green-400" : "text-red-400"}`}>
@@ -167,8 +311,7 @@ function SessionHistoryCard({
             </div>
             <div className="text-right">
               <div className="font-display text-lg font-bold text-primary leading-none">
-                {totalVolume.toLocaleString()}
-                <span className="text-xs font-normal text-muted-foreground ml-1">lbs</span>
+                {totalVolume.toLocaleString()}<span className="text-xs font-normal text-muted-foreground ml-1">lbs</span>
               </div>
               {volumeDiff !== null && volumeDiff !== 0 && (
                 <div className={`text-xs font-medium mt-0.5 ${volumeDiff > 0 ? "text-green-400" : "text-red-400"}`}>
@@ -177,12 +320,8 @@ function SessionHistoryCard({
               )}
             </div>
             <div className="flex flex-col items-end gap-1">
-              {completed ? (
-                <Trophy className="w-4 h-4 text-yellow-400" />
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  {Math.round((totalReps / goal) * 100)}%
-                </span>
+              {completed ? <Trophy className="w-4 h-4 text-yellow-400" /> : (
+                <span className="text-xs text-muted-foreground">{Math.round((totalReps / goal) * 100)}%</span>
               )}
               <button className="text-muted-foreground hover:text-foreground transition-colors">
                 {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -192,13 +331,8 @@ function SessionHistoryCard({
         </div>
         <div className="mt-3">
           <div className="h-1 rounded-full bg-border overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.min((totalReps / goal) * 100, 100)}%`,
-                backgroundColor: completed ? "oklch(0.68 0.18 145)" : "oklch(0.72 0.18 45)",
-              }}
-            />
+            <div className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.min((totalReps / goal) * 100, 100)}%`, backgroundColor: completed ? "oklch(0.68 0.18 145)" : "oklch(0.72 0.18 45)" }} />
           </div>
         </div>
       </div>
@@ -213,9 +347,7 @@ function SessionHistoryCard({
                 <span className="font-display font-semibold">{s.reps}</span>
                 <span className="text-muted-foreground text-xs"> reps</span>
               </span>
-              <span className="font-display font-semibold text-primary text-sm">
-                {s.volume.toLocaleString()} lbs
-              </span>
+              <span className="font-display font-semibold text-primary text-sm">{s.volume.toLocaleString()} lbs</span>
             </div>
           ))}
         </div>
@@ -235,37 +367,124 @@ function LoginScreen() {
           </div>
         </div>
         <div>
-          <h1 className="font-display text-3xl font-bold text-foreground uppercase tracking-wide">
-            Iron Lab
-          </h1>
-          <p className="text-muted-foreground mt-2 text-sm">
-            Track your bench press. Beat your last session.
-          </p>
+          <h1 className="font-display text-3xl font-bold text-foreground uppercase tracking-wide">Iron Lab</h1>
+          <p className="text-muted-foreground mt-2 text-sm">Track your bench press. Beat your last session.</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-6 space-y-4">
           <div className="space-y-2 text-left">
-            {[
-              "Log sets with weight & reps",
-              "Track total volume per session",
-              "Compare progress across sessions",
-              "100-rep goal tracker",
-            ].map((f) => (
+            {["Log sets with weight & reps", "Track total volume per session", "Compare progress across sessions", "100-rep goal tracker"].map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                 {f}
               </div>
             ))}
           </div>
-          <Button
-            onClick={() => startLogin()}
-            className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.97] transition-all duration-150"
-          >
+          <Button onClick={() => startLogin()} className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.97] transition-all duration-150">
             <LogIn className="w-4 h-4 mr-2" />
             Sign In to Start
           </Button>
-          <p className="text-xs text-muted-foreground text-center">
-            Your data syncs across all devices.
-          </p>
+          <p className="text-xs text-muted-foreground text-center">Your data syncs across all devices.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Share Modal ──────────────────────────────────────────────────────────────
+function ShareModal({
+  label, totalReps, totalVolume, goal, completed, sets, onClose,
+}: {
+  label: string; totalReps: number; totalVolume: number; goal: number; completed: boolean;
+  sets: { weight: number; reps: number; volume: number }[];
+  onClose: () => void;
+}) {
+  const text = [
+    `🏋️ Iron Lab — ${label}`,
+    ``,
+    `${completed ? "🏆 Goal achieved! " : ""}${totalReps} reps · ${totalVolume.toLocaleString()} lbs total volume`,
+    ``,
+    ...sets.map((s, i) => `Set ${i + 1}: ${s.weight} lbs × ${s.reps} reps = ${s.volume.toLocaleString()} lbs`),
+    ``,
+    `Tracked with Iron Lab Bench Press Tracker`,
+  ].join("\n");
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Session summary copied to clipboard!");
+    } catch {
+      toast.error("Couldn't copy — try selecting the text manually");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Share2 className="w-4 h-4 text-primary" />
+            <span className="font-display font-semibold text-foreground uppercase tracking-wide text-sm">Share Session</span>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="rounded-lg bg-background border border-border p-3">
+            <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">{text}</pre>
+          </div>
+          <Button onClick={copy} className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90">
+            <Share2 className="w-4 h-4 mr-2" />
+            Copy to Clipboard
+          </Button>
+          <p className="text-xs text-muted-foreground text-center">Paste into any app to share your results</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Goal Picker ──────────────────────────────────────────────────────────────
+const GOAL_PRESETS = [50, 75, 100, 125, 150];
+
+function GoalPicker({ current, onSave, onClose }: { current: number; onSave: (g: number) => void; onClose: () => void }) {
+  const [val, setVal] = useState(String(current));
+
+  const commit = () => {
+    const n = parseInt(val, 10);
+    if (!n || n < 1 || n > 1000) { toast.error("Enter a goal between 1 and 1000"); return; }
+    onSave(n);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-xs rounded-xl border border-border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Settings2 className="w-4 h-4 text-primary" />
+            <span className="font-display font-semibold text-foreground uppercase tracking-wide text-sm">Rep Goal</span>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {GOAL_PRESETS.map((p) => (
+              <button key={p} onClick={() => setVal(String(p))}
+                className={`px-3 py-1.5 rounded-md font-display text-sm font-semibold transition-colors ${val === String(p) ? "bg-primary text-primary-foreground" : "bg-border text-muted-foreground hover:text-foreground"}`}>
+                {p}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground font-medium block mb-1.5">Custom</label>
+            <Input type="number" value={val} onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && commit()}
+              className="bg-input border-border text-foreground font-display h-10" min="1" max="1000" />
+          </div>
+          <Button onClick={commit} className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90">
+            <Check className="w-4 h-4 mr-2" /> Set Goal
+          </Button>
         </div>
       </div>
     </div>
@@ -273,6 +492,12 @@ function LoginScreen() {
 }
 
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
+const TIMER_OPTIONS = [
+  { label: "60s", value: 60 },
+  { label: "90s", value: 90 },
+  { label: "3 min", value: 180 },
+];
+
 function Tracker() {
   const utils = trpc.useUtils();
   const { user, logout } = useAuth();
@@ -281,27 +506,23 @@ function Tracker() {
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
 
   const addSetMutation = trpc.workout.addSet.useMutation({
-    onSuccess: () => {
-      utils.workout.getTodaySession.invalidate();
-      utils.workout.getSessions.invalidate();
-    },
+    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
-
   const deleteSetMutation = trpc.workout.deleteSet.useMutation({
-    onSuccess: () => {
-      utils.workout.getTodaySession.invalidate();
-      utils.workout.getSessions.invalidate();
-    },
+    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
-
+  const editSetMutation = trpc.workout.editSet.useMutation({
+    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateGoalMutation = trpc.workout.updateGoal.useMutation({
+    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
   const resetMutation = trpc.workout.resetToday.useMutation({
-    onSuccess: () => {
-      utils.workout.getTodaySession.invalidate();
-      utils.workout.getSessions.invalidate();
-      toast.info("Today's session cleared");
-    },
+    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); toast.info("Today's session cleared"); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -321,39 +542,40 @@ function Tracker() {
   const compareSession = pastSessions[0] ?? null;
   const volumeDiff = compareSession ? totalVolume - compareSession.totalVolume : null;
   const repsDiff = compareSession ? totalReps - compareSession.totalReps : null;
-
   const progressPct = Math.min((totalReps / REP_GOAL) * 100, 100);
   const repsRemaining = Math.max(REP_GOAL - totalReps, 0);
 
+  // UI state
   const [weightInput, setWeightInput] = useState("");
   const [repsInput, setRepsInput] = useState("");
   const [newSetId, setNewSetId] = useState<number | null>(null);
   const weightRef = useRef<HTMLInputElement>(null);
 
+  // Timer state
+  const [timerDuration, setTimerDuration] = useState(90);
+  const [timerActive, setTimerActive] = useState(false);
+  const [showTimerSettings, setShowTimerSettings] = useState(false);
+
+  // Modals
+  const [showShare, setShowShare] = useState(false);
+  const [showGoalPicker, setShowGoalPicker] = useState(false);
+
   const prevGoalRef = useRef(false);
   useEffect(() => {
-    if (goalAchieved && !prevGoalRef.current) {
-      toast.success("🏆 100 reps achieved! Goal crushed!");
-    }
+    if (goalAchieved && !prevGoalRef.current) toast.success("🏆 Goal achieved! Incredible work!");
     prevGoalRef.current = goalAchieved;
   }, [goalAchieved]);
 
   const handleAddSet = useCallback(() => {
     const weight = parseFloat(weightInput);
     const reps = parseInt(repsInput, 10);
-    if (!weight || weight <= 0 || isNaN(weight)) {
-      toast.error("Enter a valid weight");
-      weightRef.current?.focus();
-      return;
-    }
-    if (!reps || reps <= 0 || isNaN(reps)) {
-      toast.error("Enter valid reps");
-      return;
-    }
+    if (!weight || weight <= 0 || isNaN(weight)) { toast.error("Enter a valid weight"); weightRef.current?.focus(); return; }
+    if (!reps || reps <= 0 || isNaN(reps)) { toast.error("Enter valid reps"); return; }
     addSetMutation.mutate({ weight, reps }, {
       onSuccess: (data) => {
         setNewSetId(data?.set?.id ?? null);
         setTimeout(() => setNewSetId(null), 600);
+        setTimerActive(true);
       },
     });
     setWeightInput("");
@@ -361,15 +583,29 @@ function Tracker() {
     weightRef.current?.focus();
   }, [weightInput, repsInput, addSetMutation]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleAddSet();
-  };
-
-  const isMutating = addSetMutation.isPending || deleteSetMutation.isPending || resetMutation.isPending;
+  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleAddSet(); };
+  const isMutating = addSetMutation.isPending || deleteSetMutation.isPending || editSetMutation.isPending || resetMutation.isPending;
   const isLoading = todayLoading || sessionsLoading;
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Modals */}
+      {showShare && (
+        <ShareModal
+          label={todayLabel} totalReps={totalReps} totalVolume={totalVolume}
+          goal={REP_GOAL} completed={goalAchieved}
+          sets={sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
+          onClose={() => setShowShare(false)}
+        />
+      )}
+      {showGoalPicker && (
+        <GoalPicker
+          current={REP_GOAL}
+          onSave={(g) => updateGoalMutation.mutate({ goal: g })}
+          onClose={() => setShowGoalPicker(false)}
+        />
+      )}
+
       {/* ── Header ── */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="container">
@@ -379,15 +615,10 @@ function Tracker() {
                 <Dumbbell className="w-4 h-4 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="font-display text-base font-semibold text-foreground leading-none tracking-wide uppercase">
-                  Bench Press
-                </h1>
-                <p className="text-xs text-muted-foreground leading-none mt-0.5">
-                  Iron Lab{user?.name ? ` · ${user.name}` : ""}
-                </p>
+                <h1 className="font-display text-base font-semibold text-foreground leading-none tracking-wide uppercase">Bench Press</h1>
+                <p className="text-xs text-muted-foreground leading-none mt-0.5">Iron Lab{user?.name ? ` · ${user.name}` : ""}</p>
               </div>
             </div>
-
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
                 <div className="font-display text-xl font-bold text-foreground leading-none">
@@ -408,11 +639,8 @@ function Tracker() {
                   <Trophy className="w-3 h-3 mr-1" /> GOAL MET
                 </Badge>
               )}
-              <button
-                onClick={() => logout()}
-                title="Synced to cloud — click to sign out"
-                className="flex items-center gap-1.5 text-xs text-green-400 hover:text-muted-foreground transition-colors"
-              >
+              <button onClick={() => logout()} title="Synced — click to sign out"
+                className="flex items-center gap-1.5 text-xs text-green-400 hover:text-muted-foreground transition-colors">
                 <Cloud className="w-4 h-4" />
                 <span className="hidden sm:inline">Synced</span>
               </button>
@@ -427,32 +655,23 @@ function Tracker() {
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
               <Target className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                100-Rep Goal
-              </span>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{REP_GOAL}-Rep Goal</span>
+              <button onClick={() => setShowGoalPicker(true)} className="text-muted-foreground hover:text-primary transition-colors" title="Change goal">
+                <Settings2 className="w-3 h-3" />
+              </button>
             </div>
             <span className="font-display text-sm font-semibold text-foreground">
               {Math.round(progressPct)}%
-              {repsRemaining > 0 && (
-                <span className="text-xs font-normal text-muted-foreground ml-2">
-                  {repsRemaining} to go
-                </span>
-              )}
+              {repsRemaining > 0 && <span className="text-xs font-normal text-muted-foreground ml-2">{repsRemaining} to go</span>}
             </span>
           </div>
           <div className="h-2 rounded-full bg-border overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
+            <div className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${progressPct}%`,
-                background: goalAchieved
-                  ? "oklch(0.68 0.18 145)"
-                  : "linear-gradient(90deg, oklch(0.65 0.18 45), oklch(0.72 0.18 45))",
-                boxShadow: goalAchieved
-                  ? "0 0 12px oklch(0.68 0.18 145 / 0.5)"
-                  : "0 0 12px oklch(0.72 0.18 45 / 0.4)",
-              }}
-            />
+                background: goalAchieved ? "oklch(0.68 0.18 145)" : "linear-gradient(90deg, oklch(0.65 0.18 45), oklch(0.72 0.18 45))",
+                boxShadow: goalAchieved ? "0 0 12px oklch(0.68 0.18 145 / 0.5)" : "0 0 12px oklch(0.72 0.18 45 / 0.4)",
+              }} />
           </div>
         </div>
       </div>
@@ -466,20 +685,23 @@ function Tracker() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-primary" />
-                <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">
-                  Today's Session
-                </h2>
+                <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Today's Session</h2>
                 <span className="text-xs text-muted-foreground">{todayLabel}</span>
               </div>
-              {setCount > 0 && (
-                <button
-                  onClick={() => resetMutation.mutate()}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  Reset
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {setCount > 0 && (
+                  <button onClick={() => setShowShare(true)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">
+                    <Share2 className="w-3 h-3" /> Share
+                  </button>
+                )}
+                {setCount > 0 && (
+                  <button onClick={() => resetMutation.mutate()}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Stats row */}
@@ -507,57 +729,62 @@ function Tracker() {
               ))}
             </div>
 
+            {/* Rest Timer */}
+            {timerActive && (
+              <RestTimer
+                duration={timerDuration}
+                onDone={() => { setTimerActive(false); toast.info("Rest complete — time to lift!"); }}
+              />
+            )}
+
+            {/* Timer settings */}
+            {!timerActive && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowTimerSettings(!showTimerSettings)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <Timer className="w-3.5 h-3.5" />
+                  <span>Rest: {timerDuration >= 60 ? `${Math.floor(timerDuration / 60)}m${timerDuration % 60 > 0 ? ` ${timerDuration % 60}s` : ""}` : `${timerDuration}s`}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showTimerSettings ? "rotate-180" : ""}`} />
+                </button>
+                {showTimerSettings && (
+                  <div className="flex gap-1">
+                    {TIMER_OPTIONS.map((opt) => (
+                      <button key={opt.value} onClick={() => { setTimerDuration(opt.value); setShowTimerSettings(false); }}
+                        className={`px-2 py-1 rounded text-xs font-display font-semibold transition-colors ${timerDuration === opt.value ? "bg-primary text-primary-foreground" : "bg-border text-muted-foreground hover:text-foreground"}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Add Set Form */}
             <div className="rounded-lg border border-border bg-card p-4">
-              <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide mb-3">
-                Log a Set
-              </h3>
+              <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide mb-3">Log a Set</h3>
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
                   <label className="text-xs text-muted-foreground font-medium block mb-1.5">Weight (lbs)</label>
-                  <Input
-                    ref={weightRef}
-                    type="number"
-                    placeholder="e.g. 135"
-                    value={weightInput}
-                    onChange={(e) => setWeightInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
+                  <Input ref={weightRef} type="number" placeholder="e.g. 135" value={weightInput}
+                    onChange={(e) => setWeightInput(e.target.value)} onKeyDown={handleKeyDown}
                     className="bg-input border-border text-foreground font-display text-lg h-11 placeholder:text-muted-foreground/50"
-                    min="1"
-                    step="5"
-                  />
+                    min="1" step="5" />
                 </div>
                 <div className="flex-1">
                   <label className="text-xs text-muted-foreground font-medium block mb-1.5">Reps</label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 10"
-                    value={repsInput}
-                    onChange={(e) => setRepsInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
+                  <Input type="number" placeholder="e.g. 10" value={repsInput}
+                    onChange={(e) => setRepsInput(e.target.value)} onKeyDown={handleKeyDown}
                     className="bg-input border-border text-foreground font-display text-lg h-11 placeholder:text-muted-foreground/50"
-                    min="1"
-                  />
+                    min="1" />
                 </div>
-                <Button
-                  onClick={handleAddSet}
-                  disabled={isMutating}
-                  className="h-11 px-5 bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.96] transition-all duration-150 disabled:opacity-70"
-                >
-                  {isMutating ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4 mr-1.5" />
-                      Add Set
-                    </>
-                  )}
+                <Button onClick={handleAddSet} disabled={isMutating}
+                  className="h-11 px-5 bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.96] transition-all duration-150 disabled:opacity-70">
+                  {isMutating ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4 mr-1.5" />Add Set</>}
                 </Button>
               </div>
               {weightInput && repsInput && (
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Volume preview:{" "}
-                  <span className="font-display font-semibold text-primary">
+                  Volume preview: <span className="font-display font-semibold text-primary">
                     {(parseFloat(weightInput) * parseInt(repsInput, 10) || 0).toLocaleString()} lbs
                   </span>
                 </div>
@@ -566,25 +793,23 @@ function Tracker() {
 
             {/* Set list */}
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 text-primary animate-spin" />
-              </div>
+              <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>
             ) : sets.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                    Sets Logged
-                  </h3>
-                  <span className="text-xs text-muted-foreground">{setCount} total</span>
+                  <h3 className="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sets Logged</h3>
+                  <span className="text-xs text-muted-foreground">{setCount} total · hover to edit</span>
                 </div>
                 {sets.map((set, i) => (
                   <SetCard
                     key={set.id}
+                    id={set.id}
                     weight={set.weight}
                     reps={set.reps}
                     volume={set.volume}
                     index={i}
                     onDelete={() => deleteSetMutation.mutate({ setId: set.id })}
+                    onEdit={(w, r) => editSetMutation.mutate({ setId: set.id, weight: w, reps: r })}
                     isNew={set.id === newSetId}
                   />
                 ))}
@@ -593,24 +818,16 @@ function Tracker() {
               <div className="rounded-lg border border-dashed border-border p-8 text-center">
                 <Dumbbell className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
                 <p className="text-sm text-muted-foreground">No sets logged yet.</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  Enter weight and reps above to get started.
-                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Enter weight and reps above to get started.</p>
               </div>
             )}
 
             {setCount > 0 && (
-              <Button
-                variant="outline"
+              <Button variant="outline"
                 className="w-full font-display font-semibold uppercase tracking-wide border-primary/40 text-primary hover:bg-primary/10 hover:border-primary"
-                onClick={() =>
-                  toast.success(
-                    `Session saved! ${totalReps} reps · ${totalVolume.toLocaleString()} lbs total volume. Come back to compare!`
-                  )
-                }
-              >
+                onClick={() => { setShowShare(true); }}>
                 <Trophy className="w-4 h-4 mr-2" />
-                Done for Today
+                Done for Today — Share Results
               </Button>
             )}
           </div>
@@ -619,9 +836,7 @@ function Tracker() {
           <div className="space-y-5">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">
-                Session History
-              </h2>
+              <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Session History</h2>
             </div>
 
             {compareSession && (
@@ -648,13 +863,9 @@ function Tracker() {
               </div>
             )}
 
-            {/* Today's session card */}
             <SessionHistoryCard
-              label={todayLabel}
-              totalReps={totalReps}
-              totalVolume={totalVolume}
-              goal={REP_GOAL}
-              completed={goalAchieved}
+              label={todayLabel} totalReps={totalReps} totalVolume={totalVolume}
+              goal={REP_GOAL} completed={goalAchieved}
               sets={sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
               isActive={true}
               compareReps={compareSession?.totalReps ?? null}
@@ -664,19 +875,14 @@ function Tracker() {
             <Separator className="bg-border/50" />
 
             {isLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="w-5 h-5 text-primary animate-spin" />
-              </div>
+              <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
             ) : pastSessions.length > 0 ? (
               <div className="space-y-3">
                 {pastSessions.map((session, i) => (
                   <SessionHistoryCard
                     key={session.date}
-                    label={session.label}
-                    totalReps={session.totalReps}
-                    totalVolume={session.totalVolume}
-                    goal={session.goal}
-                    completed={session.completed}
+                    label={session.label} totalReps={session.totalReps} totalVolume={session.totalVolume}
+                    goal={session.goal} completed={session.completed}
                     sets={session.sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
                     isActive={false}
                     compareReps={i < pastSessions.length - 1 ? pastSessions[i + 1].totalReps : null}
@@ -688,9 +894,7 @@ function Tracker() {
               <div className="rounded-lg border border-dashed border-border p-6 text-center">
                 <TrendingUp className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">No past sessions yet.</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  Come back later this week to compare sessions.
-                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Come back later this week to compare sessions.</p>
               </div>
             )}
           </div>
@@ -703,18 +907,11 @@ function Tracker() {
 // ─── Root Export ──────────────────────────────────────────────────────────────
 export default function Home() {
   const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
-
+  if (loading) return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-primary animate-spin" />
+    </div>
+  );
+  if (!isAuthenticated) return <LoginScreen />;
   return <Tracker />;
 }

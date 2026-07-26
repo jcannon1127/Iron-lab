@@ -14,3 +14,8 @@
 - [x] Vitest tests for all workout router procedures (6 tests passing)
 - [x] Remove mandatory login — allow guest use with localStorage, optional login for cloud sync (reverted — login kept by user request)
 - [x] Restore Jeff's July 12 completed 100-rep session (10 sets, 13,470 lbs total volume)
+- [x] Inline set editing — click a set to edit weight/reps in place
+- [x] Backend editSet tRPC procedure
+- [x] Custom rep goal per user (configurable, default 100)
+- [x] Rest timer with configurable duration (60s / 90s / 3min), auto-starts after Add Set
+- [x] Share session — generate a summary card users can copy/share

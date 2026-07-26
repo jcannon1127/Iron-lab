@@ -5,10 +5,14 @@ import {
   users,
   workoutSessions,
   workoutSets,
+  workoutTemplates,
+  workoutTemplateSets,
   type InsertWorkoutSession,
   type InsertWorkoutSet,
   type WorkoutSession,
   type WorkoutSet,
+  type WorkoutTemplate,
+  type WorkoutTemplateSet,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -244,4 +248,49 @@ export async function getSetById(setId: number, userId: number): Promise<Workout
     .where(and(eq(workoutSets.id, setId), eq(workoutSets.userId, userId)))
     .limit(1);
   return result[0];
+}
+
+// ─── Template helpers ─────────────────────────────────────────────────────────
+
+export async function getUserTemplates(userId: number): Promise<(WorkoutTemplate & { sets: WorkoutTemplateSet[] })[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const templates = await db.select().from(workoutTemplates).where(eq(workoutTemplates.userId, userId)).orderBy(workoutTemplates.createdAt);
+  return Promise.all(templates.map(async (t) => {
+    const sets = await db!.select().from(workoutTemplateSets)
+      .where(eq(workoutTemplateSets.templateId, t.id))
+      .orderBy(workoutTemplateSets.position);
+    return { ...t, sets };
+  }));
+}
+
+export async function createTemplate(
+  userId: number,
+  name: string,
+  sets: { weight: number; reps: number }[]
+): Promise<WorkoutTemplate & { sets: WorkoutTemplateSet[] }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(workoutTemplates).values({ userId, name });
+  const result = await db.select().from(workoutTemplates)
+    .where(and(eq(workoutTemplates.userId, userId), eq(workoutTemplates.name, name)))
+    .orderBy(desc(workoutTemplates.createdAt)).limit(1);
+  const template = result[0];
+  if (!template) throw new Error("Failed to create template");
+  if (sets.length > 0) {
+    await db.insert(workoutTemplateSets).values(
+      sets.map((s, i) => ({ templateId: template.id, userId, weight: s.weight, reps: s.reps, position: i }))
+    );
+  }
+  const savedSets = await db.select().from(workoutTemplateSets)
+    .where(eq(workoutTemplateSets.templateId, template.id))
+    .orderBy(workoutTemplateSets.position);
+  return { ...template, sets: savedSets };
+}
+
+export async function deleteTemplate(templateId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(workoutTemplateSets).where(and(eq(workoutTemplateSets.templateId, templateId), eq(workoutTemplateSets.userId, userId)));
+  await db.delete(workoutTemplates).where(and(eq(workoutTemplates.id, templateId), eq(workoutTemplates.userId, userId)));
 }

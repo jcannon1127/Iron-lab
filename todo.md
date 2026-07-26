@@ -19,3 +19,5 @@
 - [x] Custom rep goal per user (configurable, default 100)
 - [x] Rest timer with configurable duration (60s / 90s / 3min), auto-starts after Add Set
 - [x] Share session — generate a summary card users can copy/share
+- [x] Workout templates — save/load named set sequences, quick-fill Add Set form
+- [x] Weekly volume chart — bar chart of total volume per session over last 7 days

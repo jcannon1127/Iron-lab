@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from "recharts";
 import {
   Dumbbell,
   Plus,
@@ -34,6 +36,8 @@ import {
   Timer,
   Share2,
   Settings2,
+  BookMarked,
+  Zap,
 } from "lucide-react";
 
 // ─── Animated Number ──────────────────────────────────────────────────────────
@@ -491,6 +495,178 @@ function GoalPicker({ current, onSave, onClose }: { current: number; onSave: (g:
   );
 }
 
+// ─── Weekly Volume Chart ─────────────────────────────────────────────────────
+const chartConfig = {
+  volume: { label: "Volume (lbs)", color: "hsl(var(--primary))" },
+};
+
+function WeeklyChart({ sessions }: { sessions: { label: string; totalVolume: number; completed: boolean }[] }) {
+  const data = useMemo(() => {
+    return [...sessions].slice(0, 7).reverse().map((s) => ({
+      label: s.label.replace(/^\w+,\s*/, ""), // strip weekday, keep "Jul 12"
+      volume: s.totalVolume,
+      completed: s.completed,
+    }));
+  }, [sessions]);
+
+  if (data.length === 0) return null;
+
+  const maxVol = Math.max(...data.map((d) => d.volume));
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <BarChart3 className="w-4 h-4 text-muted-foreground" />
+        <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">Weekly Volume</h3>
+      </div>
+      <ChartContainer config={chartConfig} className="h-36 w-full">
+        <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false}
+            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+          <ChartTooltip content={<ChartTooltipContent formatter={(v) => [`${Number(v).toLocaleString()} lbs`, "Volume"]} />} />
+          <Bar dataKey="volume" radius={[4, 4, 0, 0]}>
+            {data.map((_entry, i) => (
+              <Cell key={i} fill={data[i].volume === maxVol ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.35)"} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ChartContainer>
+    </div>
+  );
+}
+
+// ─── Templates Panel ─────────────────────────────────────────────────────────
+type TemplateSet = { weight: number; reps: number };
+type Template = { id: number; name: string; sets: (TemplateSet & { id: number; position: number })[] };
+
+function TemplatesPanel({ onApplySet }: { onApplySet: (weight: number, reps: number) => void }) {
+  const utils = trpc.useUtils();
+  const { data: templates = [], isLoading } = trpc.workout.getTemplates.useQuery(undefined);
+  const createMutation = trpc.workout.createTemplate.useMutation({
+    onSuccess: () => {
+      utils.workout.getTemplates.invalidate();
+      toast.success("Template saved!");
+      setShowCreate(false);
+      setNewName("");
+      setNewSets([{ weight: 0, reps: 0 }]);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.workout.deleteTemplate.useMutation({
+    onSuccess: () => { utils.workout.getTemplates.invalidate(); toast.info("Template deleted"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newSets, setNewSets] = useState<TemplateSet[]>([{ weight: 0, reps: 0 }]);
+
+  const addNewSet = () => setNewSets((prev) => [...prev, { weight: 0, reps: 0 }]);
+  const removeNewSet = (i: number) => setNewSets((prev) => prev.filter((_, idx) => idx !== i));
+  const updateNewSet = (i: number, field: "weight" | "reps", val: string) => {
+    setNewSets((prev) => prev.map((s, idx) => idx === i ? { ...s, [field]: parseFloat(val) || 0 } : s));
+  };
+
+  const handleCreate = () => {
+    if (!newName.trim()) { toast.error("Enter a template name"); return; }
+    const valid = newSets.filter((s) => s.weight > 0 && s.reps > 0);
+    if (valid.length === 0) { toast.error("Add at least one valid set"); return; }
+    createMutation.mutate({ name: newName.trim(), sets: valid });
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BookMarked className="w-4 h-4 text-muted-foreground" />
+          <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">Templates</h3>
+        </div>
+        <button onClick={() => setShowCreate((v) => !v)}
+          className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-display font-semibold uppercase tracking-wide transition-colors">
+          <Plus className="w-3.5 h-3.5" />{showCreate ? "Cancel" : "New"}
+        </button>
+      </div>
+
+      {showCreate && (
+        <div className="rounded-md border border-border bg-background p-3 space-y-3">
+          <Input placeholder="Template name (e.g. Warm-up)" value={newName} onChange={(e) => setNewName(e.target.value)}
+            className="bg-input border-border text-foreground font-display h-9 text-sm" />
+          <div className="space-y-2">
+            {newSets.map((s, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <Input type="number" placeholder="lbs" value={s.weight || ""} onChange={(e) => updateNewSet(i, "weight", e.target.value)}
+                  className="bg-input border-border text-foreground font-display h-8 text-sm w-20" min="1" />
+                <span className="text-xs text-muted-foreground">x</span>
+                <Input type="number" placeholder="reps" value={s.reps || ""} onChange={(e) => updateNewSet(i, "reps", e.target.value)}
+                  className="bg-input border-border text-foreground font-display h-8 text-sm w-20" min="1" />
+                {newSets.length > 1 && (
+                  <button onClick={() => removeNewSet(i)} className="text-muted-foreground hover:text-red-400 transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={addNewSet}
+              className="flex-1 font-display text-xs uppercase tracking-wide border-border">
+              <Plus className="w-3 h-3 mr-1" />Add Set
+            </Button>
+            <Button size="sm" onClick={handleCreate} disabled={createMutation.isPending}
+              className="flex-1 font-display text-xs uppercase tracking-wide bg-primary text-primary-foreground hover:bg-primary/90">
+              {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Check className="w-3 h-3 mr-1" />Save</>}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 text-primary animate-spin" /></div>
+      ) : templates.length === 0 ? (
+        <div className="text-center py-4">
+          <p className="text-xs text-muted-foreground">No templates yet.</p>
+          <p className="text-xs text-muted-foreground/60 mt-0.5">Save a set sequence to quick-fill your workout.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {(templates as Template[]).map((t) => (
+            <div key={t.id} className="rounded-md border border-border bg-background overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2">
+                <button onClick={() => setExpanded(expanded === t.id ? null : t.id)}
+                  className="flex items-center gap-2 flex-1 text-left">
+                  <span className="font-display text-sm font-semibold text-foreground">{t.name}</span>
+                  <span className="text-xs text-muted-foreground">{t.sets.length} sets</span>
+                  {expanded === t.id ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground ml-auto" />}
+                </button>
+                <button onClick={() => deleteMutation.mutate({ templateId: t.id })}
+                  className="ml-2 text-muted-foreground hover:text-red-400 transition-colors p-1">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {expanded === t.id && (
+                <div className="border-t border-border divide-y divide-border/50">
+                  {t.sets.map((s, i) => (
+                    <div key={s.id} className="flex items-center justify-between px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground">Set {i + 1}: <span className="text-foreground font-display font-semibold">{s.weight} lbs x {s.reps} reps</span></span>
+                      <button onClick={() => onApplySet(s.weight, s.reps)}
+                        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-display font-semibold transition-colors">
+                        <Zap className="w-3 h-3" />Use
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Tracker ─────────────────────────────────────────────────────────────
 const TIMER_OPTIONS = [
   { label: "60s", value: 60 },
@@ -832,8 +1008,16 @@ function Tracker() {
             )}
           </div>
 
-          {/* ── Right: Session History ── */}
+          {/* ── Right: Chart + Templates + Session History ── */}
           <div className="space-y-5">
+            {/* Weekly Volume Chart */}
+            {(allSessions ?? []).length > 0 && (
+              <WeeklyChart sessions={allSessions ?? []} />
+            )}
+
+            {/* Templates */}
+            <TemplatesPanel onApplySet={(w, r) => { setWeightInput(String(w)); setRepsInput(String(r)); weightRef.current?.focus(); }} />
+
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
               <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Session History</h2>

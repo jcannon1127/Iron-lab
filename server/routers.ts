@@ -14,6 +14,9 @@ import {
   addSet,
   deleteSet,
   editSet,
+  getUserTemplates,
+  createTemplate,
+  deleteTemplate,
 } from "./db";
 
 const REP_GOAL = 100;
@@ -150,6 +153,27 @@ export const appRouter = router({
           await updateSessionGoal(session.id, input.goal, session.totalReps);
         }
         return { goal: input.goal };
+      }),
+
+    /** Templates: list, create, delete */
+    getTemplates: protectedProcedure.query(async ({ ctx }) => {
+      return getUserTemplates(ctx.user.id);
+    }),
+
+    createTemplate: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(64),
+        sets: z.array(z.object({ weight: z.number().positive(), reps: z.number().int().positive() })).min(1).max(20),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return createTemplate(ctx.user.id, input.name, input.sets);
+      }),
+
+    deleteTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteTemplate(input.templateId, ctx.user.id);
+        return { success: true };
       }),
 
     /** Reset (delete) today's session */

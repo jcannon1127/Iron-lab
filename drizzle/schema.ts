@@ -69,3 +69,32 @@ export const workoutSets = mysqlTable("workout_sets", {
 
 export type WorkoutSet = typeof workoutSets.$inferSelect;
 export type InsertWorkoutSet = typeof workoutSets.$inferInsert;
+
+/**
+ * Named workout templates — a saved sequence of sets a user can replay.
+ */
+export const workoutTemplates = mysqlTable("workout_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WorkoutTemplate = typeof workoutTemplates.$inferSelect;
+export type InsertWorkoutTemplate = typeof workoutTemplates.$inferInsert;
+
+/**
+ * Individual sets within a template, ordered by position.
+ */
+export const workoutTemplateSets = mysqlTable("workout_template_sets", {
+  id: int("id").autoincrement().primaryKey(),
+  templateId: int("templateId").notNull(),
+  userId: int("userId").notNull(),
+  weight: int("weight").notNull(),
+  reps: int("reps").notNull(),
+  position: int("position").notNull().default(0),
+});
+
+export type WorkoutTemplateSet = typeof workoutTemplateSets.$inferSelect;
+export type InsertWorkoutTemplateSet = typeof workoutTemplateSets.$inferInsert;

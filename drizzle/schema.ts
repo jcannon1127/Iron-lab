@@ -98,3 +98,44 @@ export const workoutTemplateSets = mysqlTable("workout_template_sets", {
 
 export type WorkoutTemplateSet = typeof workoutTemplateSets.$inferSelect;
 export type InsertWorkoutTemplateSet = typeof workoutTemplateSets.$inferInsert;
+
+/**
+ * Per-user profile settings: display name, leaderboard opt-in.
+ */
+export const userProfiles = mysqlTable("user_profiles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  /** Name shown on the leaderboard */
+  displayName: varchar("displayName", { length: 32 }),
+  /** Whether the user appears on the public leaderboard */
+  leaderboardOptIn: boolean("leaderboardOptIn").notNull().default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type InsertUserProfile = typeof userProfiles.$inferInsert;
+
+/**
+ * Personal records — one row per record type per user.
+ * recordType: 'maxWeight' | 'bestVolume' | 'bestRepsAtWeight'
+ */
+export const personalRecords = mysqlTable("personal_records", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  /** 'maxWeight' | 'bestVolume' | 'bestSession' */
+  recordType: varchar("recordType", { length: 32 }).notNull(),
+  /** The record value (weight in lbs, volume in lbs, etc.) */
+  value: int("value").notNull(),
+  /** Optional: the weight at which this reps PR was set */
+  atWeight: int("atWeight"),
+  /** The session date when this PR was set */
+  setOnDate: varchar("setOnDate", { length: 10 }).notNull(),
+  /** The set id that triggered this PR */
+  setId: int("setId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PersonalRecord = typeof personalRecords.$inferSelect;
+export type InsertPersonalRecord = typeof personalRecords.$inferInsert;

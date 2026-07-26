@@ -7,12 +7,16 @@ import {
   workoutSets,
   workoutTemplates,
   workoutTemplateSets,
+  userProfiles,
+  personalRecords,
   type InsertWorkoutSession,
   type InsertWorkoutSet,
   type WorkoutSession,
   type WorkoutSet,
   type WorkoutTemplate,
   type WorkoutTemplateSet,
+  type UserProfile,
+  type PersonalRecord,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -293,4 +297,158 @@ export async function deleteTemplate(templateId: number, userId: number): Promis
   if (!db) return;
   await db.delete(workoutTemplateSets).where(and(eq(workoutTemplateSets.templateId, templateId), eq(workoutTemplateSets.userId, userId)));
   await db.delete(workoutTemplates).where(and(eq(workoutTemplates.id, templateId), eq(workoutTemplates.userId, userId)));
+}
+
+// ─── User Profile helpers ─────────────────────────────────────────────────────
+export async function getUserProfile(userId: number): Promise<UserProfile | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertUserProfile(
+  userId: number,
+  data: { displayName?: string; leaderboardOptIn?: boolean }
+): Promise<UserProfile> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(userProfiles).values({ userId, ...data }).onDuplicateKeyUpdate({ set: data });
+  const rows = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).limit(1);
+  return rows[0]!;
+}
+
+// ─── Personal Records helpers ─────────────────────────────────────────────────
+export async function getUserPRs(userId: number): Promise<PersonalRecord[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(personalRecords).where(eq(personalRecords.userId, userId));
+}
+
+/** Upsert a PR: if new value beats existing, replace it. Returns true if a new PR was set. */
+export async function checkAndUpdatePR(
+  userId: number,
+  recordType: string,
+  value: number,
+  setOnDate: string,
+  setId: number,
+  atWeight?: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const existing = await db
+    .select()
+    .from(personalRecords)
+    .where(and(
+      eq(personalRecords.userId, userId),
+      eq(personalRecords.recordType, recordType),
+      ...(atWeight != null ? [eq(personalRecords.atWeight, atWeight)] : [])
+    ))
+    .limit(1);
+
+  if (existing.length === 0 || value > existing[0]!.value) {
+    if (existing.length === 0) {
+      await db.insert(personalRecords).values({ userId, recordType, value, setOnDate, setId, atWeight: atWeight ?? null });
+    } else {
+      await db.update(personalRecords)
+        .set({ value, setOnDate, setId, atWeight: atWeight ?? null, updatedAt: new Date() })
+        .where(eq(personalRecords.id, existing[0]!.id));
+    }
+    return true;
+  }
+  return false;
+}
+
+// ─── Leaderboard helpers ──────────────────────────────────────────────────────
+export async function getDailyLeaderboard(date: string): Promise<
+  { userId: number; displayName: string | null; totalVolume: number; totalReps: number; sets: number }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+  // Join sessions with user_profiles where opt-in is true
+  const rows = await db
+    .select({
+      userId: workoutSessions.userId,
+      displayName: userProfiles.displayName,
+      totalVolume: workoutSessions.totalVolume,
+      totalReps: workoutSessions.totalReps,
+    })
+    .from(workoutSessions)
+    .innerJoin(userProfiles, and(eq(userProfiles.userId, workoutSessions.userId), eq(userProfiles.leaderboardOptIn, true)))
+    .where(eq(workoutSessions.date, date))
+    .orderBy(desc(workoutSessions.totalVolume));
+
+  return rows.map((r) => ({
+    userId: r.userId,
+    displayName: r.displayName,
+    totalVolume: r.totalVolume,
+    totalReps: r.totalReps,
+    sets: 0,
+  }));
+}
+
+export async function getAllTimeLeaderboard(): Promise<
+  { userId: number; displayName: string | null; bestVolume: number; maxWeight: number }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      userId: personalRecords.userId,
+      displayName: userProfiles.displayName,
+      recordType: personalRecords.recordType,
+      value: personalRecords.value,
+    })
+    .from(personalRecords)
+    .innerJoin(userProfiles, and(eq(userProfiles.userId, personalRecords.userId), eq(userProfiles.leaderboardOptIn, true)));
+
+  // Aggregate by userId
+  const map = new Map<number, { displayName: string | null; bestVolume: number; maxWeight: number }>();
+  for (const r of rows) {
+    const entry = map.get(r.userId) ?? { displayName: r.displayName, bestVolume: 0, maxWeight: 0 };
+    if (r.recordType === "bestSession") entry.bestVolume = Math.max(entry.bestVolume, r.value);
+    if (r.recordType === "maxWeight") entry.maxWeight = Math.max(entry.maxWeight, r.value);
+    map.set(r.userId, entry);
+  }
+  return Array.from(map.entries())
+    .map(([userId, d]) => ({ userId, ...d }))
+    .sort((a, b) => b.bestVolume - a.bestVolume);
+}
+
+/** Recompute all PRs for a user from scratch based on current sets in the DB.
+ *  Called after editSet, deleteSet, or resetToday to keep PRs accurate. */
+export async function recomputePRsForUser(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  // Delete all existing PRs for this user
+  await db.delete(personalRecords).where(eq(personalRecords.userId, userId));
+
+  // Fetch all sessions + sets for this user
+  const sessions = await db
+    .select()
+    .from(workoutSessions)
+    .where(eq(workoutSessions.userId, userId));
+
+  for (const session of sessions) {
+    const sets = await db
+      .select()
+      .from(workoutSets)
+      .where(eq(workoutSets.sessionId, session.id));
+
+    // Max weight PR
+    for (const s of sets) {
+      await checkAndUpdatePR(userId, "maxWeight", s.weight, session.date, s.id);
+      await checkAndUpdatePR(userId, "bestRepsAtWeight", s.reps, session.date, s.id, s.weight);
+    }
+
+    // Best session volume PR
+    if (session.totalVolume > 0) {
+      // Use the first set id as a proxy for the session anchor
+      const anchor = sets[0];
+      if (anchor) {
+        await checkAndUpdatePR(userId, "bestSession", session.totalVolume, session.date, anchor.id);
+      }
+    }
+  }
 }

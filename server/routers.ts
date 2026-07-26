@@ -17,6 +17,13 @@ import {
   getUserTemplates,
   createTemplate,
   deleteTemplate,
+  getUserProfile,
+  upsertUserProfile,
+  getUserPRs,
+  checkAndUpdatePR,
+  recomputePRsForUser,
+  getDailyLeaderboard,
+  getAllTimeLeaderboard,
 } from "./db";
 
 const REP_GOAL = 100;
@@ -114,6 +121,7 @@ export const appRouter = router({
         const totalReps = allSets.reduce((sum, s) => sum + s.reps, 0);
         const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
         await updateSessionTotals(session.id, totalReps, totalVolume, REP_GOAL);
+        await recomputePRsForUser(ctx.user.id);
         return { totalReps, totalVolume, completed: totalReps >= REP_GOAL };
       }),
 
@@ -129,6 +137,7 @@ export const appRouter = router({
         const totalReps = allSets.reduce((sum, s) => sum + s.reps, 0);
         const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
         await updateSessionTotals(session.id, totalReps, totalVolume, session.goal);
+        await recomputePRsForUser(ctx.user.id);
         return { totalReps, totalVolume, completed: totalReps >= session.goal };
       }),
 
@@ -181,7 +190,68 @@ export const appRouter = router({
       const today = new Date().toISOString().slice(0, 10);
       const session = await getSessionByDate(ctx.user.id, today);
       if (session) await deleteSession(session.id, ctx.user.id);
+      await recomputePRsForUser(ctx.user.id);
       return { success: true };
+    }),
+
+    /** Get user's personal records */
+    getPRs: protectedProcedure.query(async ({ ctx }) => {
+      return getUserPRs(ctx.user.id);
+    }),
+
+    /** Check PRs after adding a set — called client-side after addSet */
+    checkPRs: protectedProcedure
+      .input(z.object({
+        setId: z.number().int().positive(),
+        weight: z.number().positive(),
+        reps: z.number().int().positive(),
+        sessionVolume: z.number().int().nonnegative(),
+        sessionDate: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const newPRs: string[] = [];
+        // Max weight PR
+        const isMaxWeight = await checkAndUpdatePR(ctx.user.id, "maxWeight", input.weight, input.sessionDate, input.setId);
+        if (isMaxWeight) newPRs.push(`New max weight: ${input.weight} lbs!`);
+        // Best session volume PR
+        const isBestSession = await checkAndUpdatePR(ctx.user.id, "bestSession", input.sessionVolume, input.sessionDate, input.setId);
+        if (isBestSession) newPRs.push(`New best session volume: ${input.sessionVolume.toLocaleString()} lbs!`);
+        // Best reps at this weight PR
+        const isBestReps = await checkAndUpdatePR(ctx.user.id, "bestRepsAtWeight", input.reps, input.sessionDate, input.setId, input.weight);
+        if (isBestReps) newPRs.push(`New best reps at ${input.weight} lbs: ${input.reps} reps!`);
+        return { newPRs };
+      }),
+  }),
+
+  profile: router({
+    /** Get current user's profile */
+    get: protectedProcedure.query(async ({ ctx }) => {
+      return getUserProfile(ctx.user.id);
+    }),
+
+    /** Update display name and/or leaderboard opt-in */
+    update: protectedProcedure
+      .input(z.object({
+        displayName: z.string().min(1).max(32).optional(),
+        leaderboardOptIn: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return upsertUserProfile(ctx.user.id, input);
+      }),
+  }),
+
+  leaderboard: router({
+    /** Daily leaderboard for a given date (defaults to today) */
+    daily: protectedProcedure
+      .input(z.object({ date: z.string().optional() }))
+      .query(async ({ input }) => {
+        const date = input.date ?? new Date().toISOString().slice(0, 10);
+        return getDailyLeaderboard(date);
+      }),
+
+    /** All-time leaderboard */
+    allTime: protectedProcedure.query(async () => {
+      return getAllTimeLeaderboard();
     }),
   }),
 });

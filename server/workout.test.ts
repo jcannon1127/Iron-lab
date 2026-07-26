@@ -32,6 +32,18 @@ vi.mock("./db", () => ({
     createdAt: new Date(),
   }),
   deleteSet: vi.fn().mockResolvedValue(undefined),
+  editSet: vi.fn().mockResolvedValue(undefined),
+  updateSessionGoal: vi.fn().mockResolvedValue(undefined),
+  getUserTemplates: vi.fn().mockResolvedValue([]),
+  createTemplate: vi.fn().mockResolvedValue({ id: 1, name: "Test", sets: [] }),
+  deleteTemplate: vi.fn().mockResolvedValue(undefined),
+  getUserProfile: vi.fn().mockResolvedValue(null),
+  upsertUserProfile: vi.fn().mockResolvedValue(null),
+  getUserPRs: vi.fn().mockResolvedValue([]),
+  checkAndUpdatePR: vi.fn().mockResolvedValue(false),
+  recomputePRsForUser: vi.fn().mockResolvedValue(undefined),
+  getDailyLeaderboard: vi.fn().mockResolvedValue([]),
+  getAllTimeLeaderboard: vi.fn().mockResolvedValue([]),
 }));
 
 import * as db from "./db";

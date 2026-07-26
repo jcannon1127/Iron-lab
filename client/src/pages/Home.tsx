@@ -127,6 +127,7 @@ function SetCard({
   onDelete,
   onEdit,
   isNew,
+  prLabels = [],
 }: {
   id: number;
   weight: number;
@@ -136,6 +137,7 @@ function SetCard({
   onDelete: () => void;
   onEdit: (weight: number, reps: number) => void;
   isNew: boolean;
+  prLabels?: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [editWeight, setEditWeight] = useState(String(weight));
@@ -231,9 +233,9 @@ function SetCard({
 
   return (
     <div
-      className={`flex items-center gap-3 p-4 rounded-lg border border-border bg-card group transition-all duration-200 hover:border-primary/40 hover:bg-card/80 ${
-        isNew ? "animate-slide-in" : ""
-      }`}
+      className={`flex items-center gap-3 p-4 rounded-lg border bg-card group transition-all duration-200 hover:bg-card/80 ${
+        prLabels.length > 0 ? "border-yellow-500/60 hover:border-yellow-500" : "border-border hover:border-primary/40"
+      } ${isNew ? "animate-slide-in" : ""}`}
     >
       <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
         <span className="font-display text-sm font-semibold text-primary">{index + 1}</span>
@@ -258,6 +260,15 @@ function SetCard({
           <span className="text-xs text-muted-foreground font-medium">lbs</span>
         </div>
         <div className="text-xs text-muted-foreground">volume</div>
+        {prLabels.length > 0 && (
+          <div className="flex flex-wrap gap-1 justify-end mt-1">
+            {prLabels.map((label) => (
+              <span key={label} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-display font-bold uppercase tracking-wide bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                <Trophy className="w-2.5 h-2.5" />{label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div className="ml-2 flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
         <button
@@ -681,16 +692,65 @@ function Tracker() {
   const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(undefined);
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
 
+  const { data: prs } = trpc.workout.getPRs.useQuery(undefined);
+  const { data: profile } = trpc.profile.get.useQuery(undefined);
+  const { data: dailyBoard } = trpc.leaderboard.daily.useQuery({ date: new Date().toISOString().slice(0, 10) });
+  const { data: allTimeBoard } = trpc.leaderboard.allTime.useQuery(undefined);
+  const updateProfileMutation = trpc.profile.update.useMutation({
+    onSuccess: () => {
+      utils.profile.get.invalidate();
+      utils.leaderboard.daily.invalidate();
+      utils.leaderboard.allTime.invalidate();
+      toast.success("Profile updated!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const checkPRsMutation = trpc.workout.checkPRs.useMutation({
+    onSuccess: (data) => {
+      if (data.newPRs.length > 0) {
+        data.newPRs.forEach((msg) => toast.success(`🏆 PR! ${msg}`, { duration: 5000 }));
+        utils.workout.getPRs.invalidate();
+      }
+    },
+  });
+
+  // Map setId -> PR labels for display
+  const prSetMap = useMemo(() => {
+    const map = new Map<number, string[]>();
+    if (!prs) return map;
+    for (const pr of prs) {
+      if (!pr.setId) continue;
+      const labels = map.get(pr.setId) ?? [];
+      if (pr.recordType === "maxWeight") labels.push("Max Weight");
+      if (pr.recordType === "bestSession") labels.push("Best Volume");
+      if (pr.recordType === "bestRepsAtWeight") labels.push(`Best Reps @${pr.atWeight}lbs`);
+      map.set(pr.setId, labels);
+    }
+    return map;
+  }, [prs]);
+
   const addSetMutation = trpc.workout.addSet.useMutation({
     onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
   const deleteSetMutation = trpc.workout.deleteSet.useMutation({
-    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
+    onSuccess: () => {
+      utils.workout.getTodaySession.invalidate();
+      utils.workout.getSessions.invalidate();
+      utils.workout.getPRs.invalidate();
+      utils.leaderboard.daily.invalidate();
+      utils.leaderboard.allTime.invalidate();
+    },
     onError: (e) => toast.error(e.message),
   });
   const editSetMutation = trpc.workout.editSet.useMutation({
-    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); },
+    onSuccess: () => {
+      utils.workout.getTodaySession.invalidate();
+      utils.workout.getSessions.invalidate();
+      utils.workout.getPRs.invalidate();
+      utils.leaderboard.daily.invalidate();
+      utils.leaderboard.allTime.invalidate();
+    },
     onError: (e) => toast.error(e.message),
   });
   const updateGoalMutation = trpc.workout.updateGoal.useMutation({
@@ -698,7 +758,14 @@ function Tracker() {
     onError: (e) => toast.error(e.message),
   });
   const resetMutation = trpc.workout.resetToday.useMutation({
-    onSuccess: () => { utils.workout.getTodaySession.invalidate(); utils.workout.getSessions.invalidate(); toast.info("Today's session cleared"); },
+    onSuccess: () => {
+      utils.workout.getTodaySession.invalidate();
+      utils.workout.getSessions.invalidate();
+      utils.workout.getPRs.invalidate();
+      utils.leaderboard.daily.invalidate();
+      utils.leaderboard.allTime.invalidate();
+      toast.info("Today's session cleared");
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -735,6 +802,19 @@ function Tracker() {
   // Modals
   const [showShare, setShowShare] = useState(false);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [leaderboardOptIn, setLeaderboardOptIn] = useState(false);
+  // Sync profile state when loaded
+  useEffect(() => {
+    if (profile) {
+      setDisplayNameInput(profile.displayName ?? user?.name ?? "");
+      setLeaderboardOptIn(profile.leaderboardOptIn ?? false);
+    } else if (user?.name) {
+      setDisplayNameInput(user.name);
+    }
+  }, [profile, user]);
 
   const prevGoalRef = useRef(false);
   useEffect(() => {
@@ -752,12 +832,23 @@ function Tracker() {
         setNewSetId(data?.set?.id ?? null);
         setTimeout(() => setNewSetId(null), 600);
         setTimerActive(true);
+        // Check for PRs after the set is saved
+        if (data?.set?.id) {
+          const today = new Date().toISOString().slice(0, 10);
+          checkPRsMutation.mutate({
+            setId: data.set.id,
+            weight,
+            reps,
+            sessionVolume: data.totalVolume,
+            sessionDate: today,
+          });
+        }
       },
     });
     setWeightInput("");
     setRepsInput("");
     weightRef.current?.focus();
-  }, [weightInput, repsInput, addSetMutation]);
+  }, [weightInput, repsInput, addSetMutation, checkPRsMutation]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleAddSet(); };
   const isMutating = addSetMutation.isPending || deleteSetMutation.isPending || editSetMutation.isPending || resetMutation.isPending;
@@ -987,6 +1078,7 @@ function Tracker() {
                     onDelete={() => deleteSetMutation.mutate({ setId: set.id })}
                     onEdit={(w, r) => editSetMutation.mutate({ setId: set.id, weight: w, reps: r })}
                     isNew={set.id === newSetId}
+                    prLabels={prSetMap.get(set.id) ?? []}
                   />
                 ))}
               </div>
@@ -1022,6 +1114,116 @@ function Tracker() {
               <Calendar className="w-4 h-4 text-muted-foreground" />
               <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Session History</h2>
             </div>
+
+            {/* Leaderboard Panel */}
+            <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-yellow-400" />
+                  <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">Leaderboard</h3>
+                </div>
+                <button onClick={() => setShowProfile(true)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <Settings2 className="w-3.5 h-3.5" />Settings
+                </button>
+              </div>
+
+              {/* Daily Best of the Day */}
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-2">Best of the Day</div>
+                {(dailyBoard ?? []).length === 0 ? (
+                  <div className="text-xs text-muted-foreground/60 italic">
+                    {profile?.leaderboardOptIn ? "No one else has opted in yet. Be the first!" : "Opt in above to appear on the leaderboard."}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {(dailyBoard ?? []).slice(0, 5).map((entry, i) => (
+                      <div key={entry.userId} className="flex items-center gap-2">
+                        <span className={`font-display text-sm font-bold w-5 text-center ${
+                          i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-300" : i === 2 ? "text-amber-600" : "text-muted-foreground"
+                        }`}>{i + 1}</span>
+                        <span className="flex-1 text-sm text-foreground truncate">{entry.displayName ?? "Anonymous"}</span>
+                        <span className="font-display text-sm font-semibold text-primary">{entry.totalVolume.toLocaleString()} lbs</span>
+                        <span className="text-xs text-muted-foreground">{entry.totalReps} reps</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Separator className="bg-border/50" />
+
+              {/* All-Time */}
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-2">All-Time Best Session</div>
+                {(allTimeBoard ?? []).length === 0 ? (
+                  <div className="text-xs text-muted-foreground/60 italic">No entries yet.</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {(allTimeBoard ?? []).slice(0, 5).map((entry, i) => (
+                      <div key={entry.userId} className="flex items-center gap-2">
+                        <span className={`font-display text-sm font-bold w-5 text-center ${
+                          i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-300" : i === 2 ? "text-amber-600" : "text-muted-foreground"
+                        }`}>{i + 1}</span>
+                        <span className="flex-1 text-sm text-foreground truncate">{entry.displayName ?? "Anonymous"}</span>
+                        <span className="font-display text-sm font-semibold text-primary">{entry.bestVolume.toLocaleString()} lbs</span>
+                        <span className="text-xs text-muted-foreground">{entry.maxWeight} lbs max</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Profile / Leaderboard Settings Modal */}
+            {showProfile && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowProfile(false)}>
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-6 space-y-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Profile Settings</h2>
+                    <button onClick={() => setShowProfile(false)} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs text-muted-foreground font-medium block mb-1.5 uppercase tracking-wide">Display Name</label>
+                      <Input value={displayNameInput} onChange={(e) => setDisplayNameInput(e.target.value)}
+                        placeholder="Your name on the leaderboard"
+                        className="bg-input border-border text-foreground font-display h-10" />
+                      <p className="text-xs text-muted-foreground/60 mt-1">Shown on the leaderboard if you opt in.</p>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-background">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">Leaderboard Opt-In</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Show your sessions in the public rankings</div>
+                      </div>
+                      <button
+                        onClick={() => setLeaderboardOptIn((v) => !v)}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${
+                          leaderboardOptIn ? "bg-primary" : "bg-border"
+                        }`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                          leaderboardOptIn ? "translate-x-5" : "translate-x-0"
+                        }`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      updateProfileMutation.mutate({ displayName: displayNameInput.trim() || undefined, leaderboardOptIn });
+                      setShowProfile(false);
+                    }}
+                    disabled={updateProfileMutation.isPending}
+                    className="w-full font-display font-semibold uppercase tracking-wide bg-primary text-primary-foreground hover:bg-primary/90">
+                    {updateProfileMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-2" />Save Profile</>}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {compareSession && (
               <div className="rounded-lg border border-border bg-card/50 p-4">

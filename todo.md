@@ -21,3 +21,11 @@
 - [x] Share session — generate a summary card users can copy/share
 - [x] Workout templates — save/load named set sequences, quick-fill Add Set form
 - [x] Weekly volume chart — bar chart of total volume per session over last 7 days
+- [x] PR tracking — detect new max weight, best volume, best reps per weight; flag with "New PR!" badge on set log
+- [x] Leaderboard opt-in setting — users can choose to appear on the public leaderboard
+- [x] Leaderboard API — daily best volume, daily best reps, all-time best volume, all-time best weight
+- [x] Leaderboard UI — dedicated panel/page with daily "Best of the Day" and all-time rankings
+- [x] Display name setting — let users set a display name for the leaderboard
+- [x] Invalidate leaderboard queries after profile update (opt-in/display-name changes appear immediately)
+- [x] Invalidate PR records after editSet / deleteSet / resetToday
+- [x] Recompute persisted PR records server-side after editSet / deleteSet / resetToday

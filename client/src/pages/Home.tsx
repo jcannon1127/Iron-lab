@@ -1,7 +1,6 @@
 /**
  * Iron Lab — Bench Press Tracker
- * Works for everyone without login (localStorage).
- * Optional sign-in syncs data to the cloud across devices.
+ * Login required. All data synced to cloud via tRPC.
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
@@ -27,86 +26,9 @@ import {
   Calendar,
   BarChart3,
   Cloud,
-  CloudOff,
   Loader2,
+  LogIn,
 } from "lucide-react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface LocalSet {
-  id: string;
-  weight: number;
-  reps: number;
-  volume: number;
-  performedAt: number;
-}
-
-interface LocalSession {
-  date: string;
-  label: string;
-  sets: LocalSet[];
-  totalReps: number;
-  totalVolume: number;
-  completed: boolean;
-  goal: number;
-}
-
-interface LocalStore {
-  sessions: LocalSession[];
-}
-
-// DB types (for cloud mode)
-interface DbSet {
-  id: number;
-  sessionId: number;
-  userId: number;
-  weight: number;
-  reps: number;
-  volume: number;
-  performedAt: number;
-}
-
-interface DbSession {
-  id: number;
-  userId: number;
-  date: string;
-  label: string;
-  goal: number;
-  totalReps: number;
-  totalVolume: number;
-  completed: boolean;
-  sets: DbSet[];
-}
-
-const REP_GOAL = 100;
-const STORAGE_KEY = "ironlab_sessions";
-
-// ─── localStorage helpers ─────────────────────────────────────────────────────
-function loadStore(): LocalStore {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as LocalStore;
-  } catch {}
-  return { sessions: [] };
-}
-
-function saveStore(store: LocalStore) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  } catch {}
-}
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatLabel(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
-function nanoid() {
-  return Math.random().toString(36).slice(2, 10);
-}
 
 // ─── Animated Number ──────────────────────────────────────────────────────────
 function AnimatedNumber({ value, className }: { value: number; className?: string }) {
@@ -302,84 +224,58 @@ function SessionHistoryCard({
   );
 }
 
-// ─── Guest Mode Hook (localStorage) ──────────────────────────────────────────
-function useGuestTracker() {
-  const [store, setStore] = useState<LocalStore>(() => loadStore());
-
-  const today = todayIso();
-
-  const todaySession = useMemo((): LocalSession => {
-    const existing = store.sessions.find((s) => s.date === today);
-    if (existing) return existing;
-    return {
-      date: today,
-      label: formatLabel(today),
-      sets: [],
-      totalReps: 0,
-      totalVolume: 0,
-      completed: false,
-      goal: REP_GOAL,
-    };
-  }, [store, today]);
-
-  const pastSessions = useMemo(
-    () => store.sessions.filter((s) => s.date !== today).sort((a, b) => b.date.localeCompare(a.date)),
-    [store, today]
+// ─── Login Screen ─────────────────────────────────────────────────────────────
+function LoginScreen() {
+  return (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm text-center space-y-6">
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
+            <Dumbbell className="w-6 h-6 text-primary-foreground" />
+          </div>
+        </div>
+        <div>
+          <h1 className="font-display text-3xl font-bold text-foreground uppercase tracking-wide">
+            Iron Lab
+          </h1>
+          <p className="text-muted-foreground mt-2 text-sm">
+            Track your bench press. Beat your last session.
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+          <div className="space-y-2 text-left">
+            {[
+              "Log sets with weight & reps",
+              "Track total volume per session",
+              "Compare progress across sessions",
+              "100-rep goal tracker",
+            ].map((f) => (
+              <div key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                {f}
+              </div>
+            ))}
+          </div>
+          <Button
+            onClick={() => startLogin()}
+            className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.97] transition-all duration-150"
+          >
+            <LogIn className="w-4 h-4 mr-2" />
+            Sign In to Start
+          </Button>
+          <p className="text-xs text-muted-foreground text-center">
+            Your data syncs across all devices.
+          </p>
+        </div>
+      </div>
+    </div>
   );
-
-  const updateSession = useCallback((updated: LocalSession) => {
-    setStore((prev) => {
-      const sessions = prev.sessions.filter((s) => s.date !== updated.date);
-      const next = { sessions: [...sessions, updated] };
-      saveStore(next);
-      return next;
-    });
-  }, []);
-
-  const addSet = useCallback(
-    (weight: number, reps: number) => {
-      const volume = weight * reps;
-      const newSet: LocalSet = { id: nanoid(), weight, reps, volume, performedAt: Date.now() };
-      const sets = [...todaySession.sets, newSet];
-      const totalReps = sets.reduce((s, x) => s + x.reps, 0);
-      const totalVolume = sets.reduce((s, x) => s + x.volume, 0);
-      const updated: LocalSession = {
-        ...todaySession,
-        sets,
-        totalReps,
-        totalVolume,
-        completed: totalReps >= REP_GOAL,
-      };
-      updateSession(updated);
-      return newSet.id;
-    },
-    [todaySession, updateSession]
-  );
-
-  const deleteSet = useCallback(
-    (id: string) => {
-      const sets = todaySession.sets.filter((s) => s.id !== id);
-      const totalReps = sets.reduce((s, x) => s + x.reps, 0);
-      const totalVolume = sets.reduce((s, x) => s + x.volume, 0);
-      updateSession({ ...todaySession, sets, totalReps, totalVolume, completed: totalReps >= REP_GOAL });
-    },
-    [todaySession, updateSession]
-  );
-
-  const resetToday = useCallback(() => {
-    setStore((prev) => {
-      const next = { sessions: prev.sessions.filter((s) => s.date !== today) };
-      saveStore(next);
-      return next;
-    });
-  }, [today]);
-
-  return { todaySession, pastSessions, addSet, deleteSet, resetToday, isLoading: false };
 }
 
-// ─── Cloud Mode Hook (tRPC) ───────────────────────────────────────────────────
-function useCloudTracker() {
+// ─── Main Tracker ─────────────────────────────────────────────────────────────
+function Tracker() {
   const utils = trpc.useUtils();
+  const { user, logout } = useAuth();
 
   const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(undefined);
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
@@ -404,99 +300,35 @@ function useCloudTracker() {
     onSuccess: () => {
       utils.workout.getTodaySession.invalidate();
       utils.workout.getSessions.invalidate();
+      toast.info("Today's session cleared");
     },
     onError: (e) => toast.error(e.message),
   });
 
-  const today = todayIso();
-
-  const todaySession: LocalSession = useMemo(() => {
-    if (!todayData) return { date: today, label: formatLabel(today), sets: [], totalReps: 0, totalVolume: 0, completed: false, goal: REP_GOAL };
-    return {
-      date: todayData.date,
-      label: todayData.label,
-      sets: todayData.sets.map((s) => ({ id: String(s.id), weight: s.weight, reps: s.reps, volume: s.volume, performedAt: s.performedAt })),
-      totalReps: todayData.totalReps,
-      totalVolume: todayData.totalVolume,
-      completed: todayData.completed,
-      goal: todayData.goal,
-    };
-  }, [todayData, today]);
-
-  const pastSessions: LocalSession[] = useMemo(() => {
-    if (!allSessions) return [];
-    return allSessions
-      .filter((s) => s.date !== today)
-      .map((s) => ({
-        date: s.date,
-        label: s.label,
-        sets: s.sets.map((x) => ({ id: String(x.id), weight: x.weight, reps: x.reps, volume: x.volume, performedAt: x.performedAt })),
-        totalReps: s.totalReps,
-        totalVolume: s.totalVolume,
-        completed: s.completed,
-        goal: s.goal,
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [allSessions, today]);
-
-  const [pendingId, setPendingId] = useState<string | null>(null);
-
-  const addSet = useCallback(
-    (weight: number, reps: number) => {
-      const tempId = nanoid();
-      setPendingId(tempId);
-      addSetMutation.mutate({ weight, reps }, { onSettled: () => setPendingId(null) });
-      return tempId;
-    },
-    [addSetMutation]
-  );
-
-  const deleteSet = useCallback(
-    (id: string) => {
-      deleteSetMutation.mutate({ setId: parseInt(id, 10) });
-    },
-    [deleteSetMutation]
-  );
-
-  const resetToday = useCallback(() => {
-    resetMutation.mutate();
-  }, [resetMutation]);
-
-  return {
-    todaySession,
-    pastSessions,
-    addSet,
-    deleteSet,
-    resetToday,
-    isLoading: todayLoading || sessionsLoading,
-    isMutating: addSetMutation.isPending || deleteSetMutation.isPending || resetMutation.isPending,
-  };
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-export default function Home() {
-  const { isAuthenticated, loading: authLoading, user, logout } = useAuth();
-
-  // Always call both hooks — use the right one based on auth state
-  const guest = useGuestTracker();
-  const cloud = useCloudTracker();
-
-  const tracker = isAuthenticated ? cloud : guest;
-  const { todaySession, pastSessions, addSet, deleteSet, resetToday, isLoading } = tracker;
-  const isMutating: boolean = "isMutating" in tracker ? (tracker.isMutating as boolean) : false;
-
-  const [weightInput, setWeightInput] = useState("");
-  const [repsInput, setRepsInput] = useState("");
-  const [newSetId, setNewSetId] = useState<string | null>(null);
-  const weightRef = useRef<HTMLInputElement>(null);
-
-  const { totalReps, totalVolume, sets, goal, completed: goalAchieved } = todaySession;
+  const REP_GOAL = todayData?.goal ?? 100;
+  const sets = useMemo(() => todayData?.sets ?? [], [todayData]);
+  const totalReps = todayData?.totalReps ?? 0;
+  const totalVolume = todayData?.totalVolume ?? 0;
   const setCount = sets.length;
-  const progressPct = Math.min((totalReps / goal) * 100, 100);
-  const repsRemaining = Math.max(goal - totalReps, 0);
+  const goalAchieved = todayData?.completed ?? false;
+  const todayLabel = todayData?.label ?? new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const pastSessions = useMemo(
+    () => (allSessions ?? []).filter((s) => s.date !== today).sort((a, b) => b.date.localeCompare(a.date)),
+    [allSessions, today]
+  );
   const compareSession = pastSessions[0] ?? null;
   const volumeDiff = compareSession ? totalVolume - compareSession.totalVolume : null;
   const repsDiff = compareSession ? totalReps - compareSession.totalReps : null;
+
+  const progressPct = Math.min((totalReps / REP_GOAL) * 100, 100);
+  const repsRemaining = Math.max(REP_GOAL - totalReps, 0);
+
+  const [weightInput, setWeightInput] = useState("");
+  const [repsInput, setRepsInput] = useState("");
+  const [newSetId, setNewSetId] = useState<number | null>(null);
+  const weightRef = useRef<HTMLInputElement>(null);
 
   const prevGoalRef = useRef(false);
   useEffect(() => {
@@ -518,25 +350,23 @@ export default function Home() {
       toast.error("Enter valid reps");
       return;
     }
-    const id = addSet(weight, reps);
-    setNewSetId(id);
-    setTimeout(() => setNewSetId(null), 600);
+    addSetMutation.mutate({ weight, reps }, {
+      onSuccess: (data) => {
+        setNewSetId(data?.set?.id ?? null);
+        setTimeout(() => setNewSetId(null), 600);
+      },
+    });
     setWeightInput("");
     setRepsInput("");
     weightRef.current?.focus();
-  }, [weightInput, repsInput, addSet]);
+  }, [weightInput, repsInput, addSetMutation]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleAddSet();
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
+  const isMutating = addSetMutation.isPending || deleteSetMutation.isPending || resetMutation.isPending;
+  const isLoading = todayLoading || sessionsLoading;
 
   return (
     <div className="min-h-screen bg-background">
@@ -553,8 +383,7 @@ export default function Home() {
                   Bench Press
                 </h1>
                 <p className="text-xs text-muted-foreground leading-none mt-0.5">
-                  Iron Lab
-                  {isAuthenticated && user?.name ? ` · ${user.name}` : " · Guest"}
+                  Iron Lab{user?.name ? ` · ${user.name}` : ""}
                 </p>
               </div>
             </div>
@@ -563,7 +392,7 @@ export default function Home() {
               <div className="text-right hidden sm:block">
                 <div className="font-display text-xl font-bold text-foreground leading-none">
                   <AnimatedNumber value={totalReps} />
-                  <span className="text-xs font-normal text-muted-foreground ml-1">/ {goal} reps</span>
+                  <span className="text-xs font-normal text-muted-foreground ml-1">/ {REP_GOAL} reps</span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">{setCount} sets today</div>
               </div>
@@ -579,26 +408,14 @@ export default function Home() {
                   <Trophy className="w-3 h-3 mr-1" /> GOAL MET
                 </Badge>
               )}
-              {/* Cloud sync button */}
-              {isAuthenticated ? (
-                <button
-                  onClick={() => logout()}
-                  title="Signed in — data synced to cloud. Click to sign out."
-                  className="flex items-center gap-1.5 text-xs text-green-400 hover:text-muted-foreground transition-colors"
-                >
-                  <Cloud className="w-4 h-4" />
-                  <span className="hidden sm:inline">Synced</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => startLogin()}
-                  title="Sign in to sync across devices"
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <CloudOff className="w-4 h-4" />
-                  <span className="hidden sm:inline">Sign in to sync</span>
-                </button>
-              )}
+              <button
+                onClick={() => logout()}
+                title="Synced to cloud — click to sign out"
+                className="flex items-center gap-1.5 text-xs text-green-400 hover:text-muted-foreground transition-colors"
+              >
+                <Cloud className="w-4 h-4" />
+                <span className="hidden sm:inline">Synced</span>
+              </button>
             </div>
           </div>
         </div>
@@ -652,11 +469,11 @@ export default function Home() {
                 <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">
                   Today's Session
                 </h2>
-                <span className="text-xs text-muted-foreground">{todaySession.label}</span>
+                <span className="text-xs text-muted-foreground">{todayLabel}</span>
               </div>
               {setCount > 0 && (
                 <button
-                  onClick={() => { resetToday(); toast.info("Today's session cleared"); }}
+                  onClick={() => resetMutation.mutate()}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
                 >
                   <RotateCcw className="w-3 h-3" />
@@ -767,7 +584,7 @@ export default function Home() {
                     reps={set.reps}
                     volume={set.volume}
                     index={i}
-                    onDelete={() => deleteSet(set.id)}
+                    onDelete={() => deleteSetMutation.mutate({ setId: set.id })}
                     isNew={set.id === newSetId}
                   />
                 ))}
@@ -795,25 +612,6 @@ export default function Home() {
                 <Trophy className="w-4 h-4 mr-2" />
                 Done for Today
               </Button>
-            )}
-
-            {/* Guest sync nudge */}
-            {!isAuthenticated && setCount > 0 && (
-              <div className="rounded-lg border border-border bg-card/50 p-4 flex items-start gap-3">
-                <CloudOff className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground">
-                    Your data is saved on this device only.{" "}
-                    <button
-                      onClick={() => startLogin()}
-                      className="text-primary hover:underline font-medium"
-                    >
-                      Sign in
-                    </button>{" "}
-                    to sync across all your devices.
-                  </p>
-                </div>
-              </div>
             )}
           </div>
 
@@ -852,12 +650,12 @@ export default function Home() {
 
             {/* Today's session card */}
             <SessionHistoryCard
-              label={todaySession.label}
+              label={todayLabel}
               totalReps={totalReps}
               totalVolume={totalVolume}
-              goal={goal}
+              goal={REP_GOAL}
               completed={goalAchieved}
-              sets={sets}
+              sets={sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
               isActive={true}
               compareReps={compareSession?.totalReps ?? null}
               compareVolume={compareSession?.totalVolume ?? null}
@@ -879,7 +677,7 @@ export default function Home() {
                     totalVolume={session.totalVolume}
                     goal={session.goal}
                     completed={session.completed}
-                    sets={session.sets}
+                    sets={session.sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
                     isActive={false}
                     compareReps={i < pastSessions.length - 1 ? pastSessions[i + 1].totalReps : null}
                     compareVolume={i < pastSessions.length - 1 ? pastSessions[i + 1].totalVolume : null}
@@ -900,4 +698,23 @@ export default function Home() {
       </div>
     </div>
   );
+}
+
+// ─── Root Export ──────────────────────────────────────────────────────────────
+export default function Home() {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
+
+  return <Tracker />;
 }

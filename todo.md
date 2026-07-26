@@ -12,5 +12,5 @@
 - [x] Login gate for unauthenticated users
 - [x] Pre-loaded Jeff's two sets (45×20, 95×15) into database
 - [x] Vitest tests for all workout router procedures (6 tests passing)
-- [ ] Remove mandatory login — allow guest use with localStorage, optional login for cloud sync
-- [ ] Restore Jeff's completed 100-rep session (today's date, all sets)
+- [x] Remove mandatory login — allow guest use with localStorage, optional login for cloud sync (reverted — login kept by user request)
+- [x] Restore Jeff's July 12 completed 100-rep session (10 sets, 13,470 lbs total volume)

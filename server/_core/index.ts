@@ -38,6 +38,12 @@ async function startServer() {
   app.use(cookieParser());
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  // Health check — must return JSON before the SPA catch-all
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

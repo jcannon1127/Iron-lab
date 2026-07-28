@@ -62,3 +62,19 @@
 - [x] Add iOS splash screens and apple-touch-icon meta tags
 - [ ] Mobile viewport and UI polish (safe areas, touch targets)
 - [x] Account deletion feature — deleteAccount tRPC procedure + confirmation modal (type DELETE to confirm)
+
+## App Store Readiness Roadmap
+
+- [ ] Publish Google OAuth consent screen (remove testing-mode restriction)
+- [x] Privacy Policy page at /privacy (Google OAuth requirement)
+- [x] Terms of Service page at /terms
+- [x] Login page footer links to Privacy and Terms
+- [ ] Capacitor iOS wrapper — scaffold project, configure app ID, generate Xcode project
+- [ ] Capacitor: configure server URL to ironlab.thisisus.ai for live mode
+- [ ] Capacitor: configure app icon, splash screen, bundle ID (com.yogademocracy.ironlab)
+- [ ] Mobile viewport polish — safe areas (env(safe-area-inset-*)), touch targets ≥44px
+- [ ] Mobile UI — bottom navigation bar for thumb-friendly use on iOS
+- [ ] Mobile UI — iOS-specific tweaks (overscroll, tap highlight, font size)
+- [ ] HealthKit integration via @capacitor-community/health-kit plugin
+- [ ] HealthKit: write workout sessions to Apple Health after each session
+- [ ] HealthKit: request permissions on first launch

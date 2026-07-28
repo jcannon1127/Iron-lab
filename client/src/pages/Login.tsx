@@ -335,7 +335,9 @@ export default function Login() {
           </div>
 
           <p className="text-center text-gray-600 text-xs mt-6">
-            By continuing, you agree to our Terms of Service and Privacy Policy.
+            By continuing, you agree to our{" "}
+            <a href="/terms" className="underline hover:text-gray-400 transition-colors">Terms of Service</a>{" "}and{" "}
+            <a href="/privacy" className="underline hover:text-gray-400 transition-colors">Privacy Policy</a>.
           </p>
         </div>
       </div>

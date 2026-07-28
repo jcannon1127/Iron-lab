@@ -7,6 +7,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 import { trpc } from "@/lib/trpc";
 
 /** Wraps a route — redirects to /login if not authenticated */
@@ -33,6 +35,8 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/privacy" component={Privacy} />
+      <Route path="/terms" component={Terms} />
       <Route path="/">
         {() => <ProtectedRoute component={Home} />}
       </Route>

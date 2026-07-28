@@ -26,7 +26,7 @@ import {
   Trophy,
   Calendar,
   BarChart3,
-  Cloud,
+  LogOut,
   Loader2,
   LogIn,
   Pencil,
@@ -909,10 +909,10 @@ function Tracker() {
                   <Trophy className="w-3 h-3 mr-1" /> GOAL MET
                 </Badge>
               )}
-              <button onClick={() => logout()} title="Synced — click to sign out"
-                className="flex items-center gap-1.5 text-xs text-green-400 hover:text-muted-foreground transition-colors">
-                <Cloud className="w-4 h-4" />
-                <span className="hidden sm:inline">Synced</span>
+              <button onClick={() => logout()} title="Sign out"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-400/10">
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Sign Out</span>
               </button>
             </div>
           </div>

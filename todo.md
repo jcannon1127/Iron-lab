@@ -29,21 +29,22 @@
 - [x] Invalidate leaderboard queries after profile update (opt-in/display-name changes appear immediately)
 - [x] Invalidate PR records after editSet / deleteSet / resetToday
 - [x] Recompute persisted PR records server-side after editSet / deleteSet / resetToday
-- [ ] Replace Manus OAuth with standalone JWT + bcrypt auth (email/password, Google, Apple stubs)
+- [x] Replace Manus OAuth with standalone JWT + bcrypt auth (email/password, Google, Apple stubs)
 - [ ] PWA manifest, service worker, app icons
-- [ ] Migrate Drizzle schema from MySQL to Postgres
-- [ ] Update drizzle.config.ts to use postgres dialect
-- [ ] Update server/db.ts to use drizzle-orm/node-postgres
-- [ ] Write Dockerfile for production build
-- [ ] Write docker-compose.yml for ironlab deployment
-- [ ] Set up ironlab.thisisus.ai DNS A record pointing to 155.138.207.23
-- [ ] Create ironlab_db Postgres database on nvidia-vultr
-- [ ] Add Caddy block for ironlab.thisisus.ai → port 4001
-- [ ] Deploy and verify live at https://ironlab.thisisus.ai
-- [ ] Forgot password flow — email input form on login page
-- [ ] password_reset_tokens table in schema (token, userId, expiresAt)
-- [ ] Backend: /api/auth/forgot-password route (generate token, send email)
-- [ ] Backend: /api/auth/reset-password route (validate token, update password)
-- [ ] Frontend: Reset password page (/reset-password?token=...)
-- [ ] Email sending via Resend API
-- [ ] Generate Apple/Google OAuth credentials setup guide PDF
+- [x] Migrate Drizzle schema from MySQL to Postgres
+- [x] Update drizzle.config.ts to use postgres dialect
+- [x] Update server/db.ts to use drizzle-orm/node-postgres
+- [x] Write Dockerfile for production build
+- [x] Write docker-compose.yml for ironlab deployment
+- [x] Set up ironlab.thisisus.ai DNS A record pointing to 155.138.207.23
+- [x] Create ironlab_db Postgres database on nvidia-vultr
+- [x] Add Caddy block for ironlab.thisisus.ai → port 4001
+- [x] Deploy and verify live at https://ironlab.thisisus.ai
+- [x] Forgot password flow — email input form on login page
+- [x] password_reset_tokens table in schema (token, userId, expiresAt)
+- [x] Backend: /api/auth/forgot-password route (generate token, send email)
+- [x] Backend: /api/auth/reset-password route (validate token, update password)
+- [x] Frontend: Reset password page (/reset-password?token=...)
+- [x] Email sending via Resend API (requires RESEND_API_KEY secret)
+- [x] Generate Apple/Google OAuth credentials setup guide PDF
+- [ ] Add logout button to the main app UI (header/settings area)

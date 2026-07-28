@@ -19,7 +19,13 @@ import {
 } from "./db";
 
 const COOKIE_NAME = "ironlab_session";
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error(
+    "[Auth] JWT_SECRET environment variable is not set. " +
+    "Set it to a long random string before starting the server."
+  );
+}
 const JWT_EXPIRES_IN = "30d";
 const BCRYPT_ROUNDS = 12;
 
@@ -31,15 +37,17 @@ export interface JwtPayload {
   [key: string]: unknown;
 }
 
+const JWT_SECRET_SAFE: string = JWT_SECRET;
+
 export function signToken(userId: number, email: string | null): string {
-  return jwt.sign({ sub: userId, email } as JwtPayload, JWT_SECRET, {
+  return jwt.sign({ sub: userId, email } as JwtPayload, JWT_SECRET_SAFE, {
     expiresIn: JWT_EXPIRES_IN,
   });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as unknown as JwtPayload;
+    return jwt.verify(token, JWT_SECRET_SAFE) as unknown as JwtPayload;
   } catch {
     return null;
   }
@@ -177,13 +185,15 @@ export async function handleGoogleCallback(code: string): Promise<{
 
   // Find or create user
   let user = await getUserByGoogleId(googleUser.sub);
-  if (!user && googleUser.email) {
+  // Only match by email when Google has verified it — prevents account takeover via
+  // unverified Google accounts that claim someone else's email address.
+  if (!user && googleUser.email && googleUser.email_verified === true) {
     user = await getUserByEmail(googleUser.email);
   }
 
   if (user) {
-    // Link Google ID if not already linked
-    if (!user.googleId) {
+    // Link Google ID if not already linked — only when email is verified to prevent account takeover
+    if (!user.googleId && googleUser.email_verified === true) {
       const db = await (await import("./db")).getDb();
       if (db) {
         const { users } = await import("../drizzle/schema");

@@ -47,4 +47,12 @@
 - [x] Frontend: Reset password page (/reset-password?token=...)
 - [x] Email sending via Resend API (requires RESEND_API_KEY secret)
 - [x] Generate Apple/Google OAuth credentials setup guide PDF
-- [ ] Add logout button to the main app UI (header/settings area)
+- [x] Add logout button to the main app UI (header/settings area)
+- [x] Google OAuth backend routes (/api/auth/google, /api/auth/google/callback)
+- [x] Google OAuth frontend button wired to real flow
+- [x] Deploy Google OAuth to Vultr and test end-to-end
+- [x] Fix OAuth state CSRF — store state in httpOnly cookie, verify on callback
+- [x] Fix unverified Google email linking — only link when email_verified === true
+- [x] Fix JWT_SECRET fallback — throw hard startup error if missing
+- [x] Fix reset token expiry — expiresAt already checked in DB query (gt operator)
+- [x] Add rate limiting to /api/auth/* endpoints (express-rate-limit)

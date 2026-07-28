@@ -23,6 +23,7 @@ import {
   recomputePRsForUser,
   getDailyLeaderboard,
   getAllTimeLeaderboard,
+  deleteUser,
 } from "./db";
 
 const REP_GOAL = 100;
@@ -38,6 +39,14 @@ export const appRouter = router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       clearSessionCookie(ctx.res);
+      return { success: true } as const;
+    }),
+    deleteAccount: protectedProcedure.mutation(async ({ ctx }) => {
+      const userId = ctx.user.id;
+      // Clear session cookie first so the client is immediately logged out
+      clearSessionCookie(ctx.res);
+      // Cascade-delete all user data (sessions, sets, templates, PRs, tokens, profile)
+      await deleteUser(userId);
       return { success: true } as const;
     }),
   }),

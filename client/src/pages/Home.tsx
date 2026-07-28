@@ -37,6 +37,7 @@ import {
   Settings2,
   BookMarked,
   Zap,
+  AlertTriangle,
 } from "lucide-react";
 
 // ─── Animated Number ──────────────────────────────────────────────────────────
@@ -692,6 +693,12 @@ function Tracker() {
   });
   const logout = () => logoutMutation.mutate();
 
+  const deleteAccountMutation = trpc.auth.deleteAccount.useMutation({
+    onSuccess: () => { window.location.href = "/login"; },
+    onError: (e) => toast.error(e.message),
+  });
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
   const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(undefined);
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
 
@@ -807,6 +814,7 @@ function Tracker() {
   const [showGoalPicker, setShowGoalPicker] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [leaderboardOptIn, setLeaderboardOptIn] = useState(false);
   // Sync profile state when loaded
@@ -1223,6 +1231,58 @@ function Tracker() {
                     disabled={updateProfileMutation.isPending}
                     className="w-full font-display font-semibold uppercase tracking-wide bg-primary text-primary-foreground hover:bg-primary/90">
                     {updateProfileMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-2" />Save Profile</>}
+                  </Button>
+
+                  <div className="pt-2 border-t border-border/50">
+                    <button
+                      onClick={() => { setShowProfile(false); setShowDeleteAccount(true); setDeleteConfirmText(""); }}
+                      className="w-full flex items-center justify-center gap-2 text-xs text-red-400/70 hover:text-red-400 transition-colors py-2 rounded hover:bg-red-400/10">
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Account
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Delete Account Confirmation Modal ── */}
+            {showDeleteAccount && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteAccount(false)}>
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+                <div className="relative w-full max-w-sm rounded-xl border border-red-500/30 bg-card p-6 space-y-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-red-400" />
+                      <h2 className="font-display text-lg font-semibold text-red-400 uppercase tracking-wide">Delete Account</h2>
+                    </div>
+                    <button onClick={() => setShowDeleteAccount(false)} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      This will <span className="text-red-400 font-semibold">permanently delete</span> your account and all workout data — sessions, sets, templates, and personal records. This action cannot be undone.
+                    </p>
+                    <div>
+                      <label className="text-xs text-muted-foreground font-medium block mb-1.5 uppercase tracking-wide">
+                        Type <span className="text-red-400 font-mono font-bold">DELETE</span> to confirm
+                      </label>
+                      <Input
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        placeholder="DELETE"
+                        className="bg-input border-red-500/30 text-foreground font-mono h-10 focus:border-red-500/60"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => deleteAccountMutation.mutate()}
+                    disabled={deleteConfirmText !== "DELETE" || deleteAccountMutation.isPending}
+                    className="w-full font-display font-semibold uppercase tracking-wide bg-red-600 text-white hover:bg-red-700 disabled:opacity-40">
+                    {deleteAccountMutation.isPending
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</>
+                      : <><Trash2 className="w-4 h-4 mr-2" />Permanently Delete Account</>}
                   </Button>
                 </div>
               </div>

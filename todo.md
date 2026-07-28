@@ -30,7 +30,7 @@
 - [x] Invalidate PR records after editSet / deleteSet / resetToday
 - [x] Recompute persisted PR records server-side after editSet / deleteSet / resetToday
 - [x] Replace Manus OAuth with standalone JWT + bcrypt auth (email/password, Google, Apple stubs)
-- [ ] PWA manifest, service worker, app icons
+- [ ] PWA manifest, service worker, app icons (deferred — not blocking)
 - [x] Migrate Drizzle schema from MySQL to Postgres
 - [x] Update drizzle.config.ts to use postgres dialect
 - [x] Update server/db.ts to use drizzle-orm/node-postgres
@@ -56,3 +56,9 @@
 - [x] Fix JWT_SECRET fallback — throw hard startup error if missing
 - [x] Fix reset token expiry — expiresAt already checked in DB query (gt operator)
 - [x] Add rate limiting to /api/auth/* endpoints (express-rate-limit)
+- [x] Generate Iron Lab app icons (all PWA/iOS/Android sizes) — new dumbbell artwork, 192/512/180px
+- [x] Add web app manifest (manifest.json) with name, icons, theme colors
+- [x] Add service worker for offline support
+- [x] Add iOS splash screens and apple-touch-icon meta tags
+- [ ] Mobile viewport and UI polish (safe areas, touch targets)
+- [x] Account deletion feature — deleteAccount tRPC procedure + confirmation modal (type DELETE to confirm)

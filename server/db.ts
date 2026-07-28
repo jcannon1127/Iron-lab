@@ -445,3 +445,12 @@ export async function updateUserPassword(userId: number, passwordHash: string) {
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
 }
+
+// ─── Account Deletion ─────────────────────────────────────────────────────────
+
+export async function deleteUser(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // All related rows cascade-delete via FK constraints (sessions, sets, templates, profile, PRs, tokens)
+  await db.delete(users).where(eq(users.id, userId));
+}

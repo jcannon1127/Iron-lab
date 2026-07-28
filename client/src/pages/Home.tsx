@@ -39,6 +39,7 @@ import {
   Zap,
   AlertTriangle,
 } from "lucide-react";
+import { HealthKitBanner, HealthKitSaveButton } from "@/components/HealthKitSync";
 
 // ─── Animated Number ──────────────────────────────────────────────────────────
 function AnimatedNumber({ value, className }: { value: number; className?: string }) {
@@ -866,7 +867,7 @@ function Tracker() {
   const isLoading = todayLoading || sessionsLoading;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-safe">
       {/* Modals */}
       {showShare && (
         <ShareModal
@@ -885,7 +886,7 @@ function Tracker() {
       )}
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm pt-safe">
         <div className="container">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
@@ -927,6 +928,9 @@ function Tracker() {
         </div>
       </header>
 
+      {/* ── HealthKit Connect Banner (iOS only) ── */}
+      <HealthKitBanner />
+
       {/* ── Progress Bar ── */}
       <div className="border-b border-border bg-card/50">
         <div className="container py-3">
@@ -967,6 +971,15 @@ function Tracker() {
                 <span className="text-xs text-muted-foreground">{todayLabel}</span>
               </div>
               <div className="flex items-center gap-3">
+                {setCount > 0 && (
+                  <HealthKitSaveButton
+                    workoutStart={sets[0]?.createdAt ? new Date(sets[0].createdAt) : undefined}
+                    workoutEnd={sets[sets.length - 1]?.createdAt ? new Date(sets[sets.length - 1].createdAt) : undefined}
+                    totalVolumeLbs={totalVolume}
+                    maxWeightLbs={Math.max(...sets.map(s => s.weight))}
+                    onSave={() => toast.success("Saved to Apple Health")}
+                  />
+                )}
                 {setCount > 0 && (
                   <button onClick={() => setShowShare(true)}
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">

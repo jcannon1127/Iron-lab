@@ -1,5 +1,8 @@
 import { trpc } from "@/lib/trpc";
 import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '@shared/const';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { Capacitor } from '@capacitor/core';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -79,8 +82,17 @@ createRoot(document.getElementById("root")!).render(
   </trpc.Provider>
 );
 
-// Register service worker for PWA support
-if ("serviceWorker" in navigator) {
+// Initialize Capacitor plugins when running as a native app
+if (Capacitor.isNativePlatform()) {
+  // Dark status bar to match app theme
+  StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+  StatusBar.setBackgroundColor({ color: '#0f0f0f' }).catch(() => {});
+  // Hide splash screen after app is ready
+  SplashScreen.hide({ fadeOutDuration: 300 }).catch(() => {});
+}
+
+// Register service worker for PWA support (web only)
+if (!Capacitor.isNativePlatform() && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")

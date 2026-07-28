@@ -69,12 +69,15 @@
 - [x] Privacy Policy page at /privacy (Google OAuth requirement)
 - [x] Terms of Service page at /terms
 - [x] Login page footer links to Privacy and Terms
-- [ ] Capacitor iOS wrapper — scaffold project, configure app ID, generate Xcode project
-- [ ] Capacitor: configure server URL to ironlab.thisisus.ai for live mode
-- [ ] Capacitor: configure app icon, splash screen, bundle ID (com.yogademocracy.ironlab)
-- [ ] Mobile viewport polish — safe areas (env(safe-area-inset-*)), touch targets ≥44px
-- [ ] Mobile UI — bottom navigation bar for thumb-friendly use on iOS
-- [ ] Mobile UI — iOS-specific tweaks (overscroll, tap highlight, font size)
-- [ ] HealthKit integration via @capacitor-community/health-kit plugin
-- [ ] HealthKit: write workout sessions to Apple Health after each session
+- [x] Capacitor iOS wrapper — scaffold project, configure app ID, generate Xcode project
+- [x] Capacitor: configure server URL to ironlab.thisisus.ai for live mode
+- [x] Capacitor: configure app icon, splash screen, bundle ID (com.yogademocracy.ironlab)
+- [x] Mobile viewport polish — safe areas (env(safe-area-inset-*)), touch targets ≥44px
+- [x] Mobile UI — iOS-specific tweaks (overscroll, tap highlight, font size, -webkit-text-size-adjust)
+- [x] HealthKit integration via capacitor-health plugin + custom Swift IronLabHealthPlugin
+- [x] HealthKit: write workout sessions to Apple Health (IronLabHealthPlugin.swift + useHealthKit hook)
+- [x] HealthKit: HealthKitBanner component (iOS-only connect prompt)
+- [x] HealthKit: HealthKitSaveButton in Today's Session panel
+- [ ] Mobile UI — audit all tappable controls for ≥44px touch targets across Home/Login/modals
+- [ ] Mobile UI — bottom navigation bar for thumb-friendly use on iOS (future enhancement)
 - [ ] HealthKit: request permissions on first launch

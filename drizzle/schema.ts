@@ -1,141 +1,139 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, bigint, boolean } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  integer,
+  pgEnum,
+  pgTable,
+  real,
+  serial,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
-export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+export const roleEnum = pgEnum("role", ["user", "admin"]);
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  email: varchar("email", { length: 320 }).unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }),
+  googleId: varchar("googleId", { length: 128 }).unique(),
+  appleId: varchar("appleId", { length: 128 }).unique(),
+  loginMethod: varchar("loginMethod", { length: 32 }).notNull().default("email"),
+  emailVerified: boolean("emailVerified").notNull().default(false),
+  role: roleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-/**
- * A workout session — one per day per user.
- * totalReps and totalVolume are denormalized for fast reads.
- */
-export const workoutSessions = mysqlTable("workout_sessions", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  /** ISO date string YYYY-MM-DD, one session per user per day */
+// ─── Workout Sessions ─────────────────────────────────────────────────────────
+
+export const workoutSessions = pgTable("workout_sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   date: varchar("date", { length: 10 }).notNull(),
-  /** Human-readable label, e.g. "Sun, Jul 12" */
-  label: varchar("label", { length: 32 }).notNull(),
-  /** Rep goal for this session */
-  goal: int("goal").notNull().default(100),
-  /** Denormalized total reps across all sets */
-  totalReps: int("totalReps").notNull().default(0),
-  /** Denormalized total volume (lbs) across all sets */
-  totalVolume: int("totalVolume").notNull().default(0),
-  /** Whether the rep goal has been reached */
+  label: varchar("label", { length: 64 }).notNull(),
+  goal: integer("goal").notNull().default(100),
+  totalReps: integer("totalReps").notNull().default(0),
+  totalVolume: integer("totalVolume").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type WorkoutSession = typeof workoutSessions.$inferSelect;
 export type InsertWorkoutSession = typeof workoutSessions.$inferInsert;
 
-/**
- * Individual sets within a session.
- */
-export const workoutSets = mysqlTable("workout_sets", {
-  id: int("id").autoincrement().primaryKey(),
-  sessionId: int("sessionId").notNull(),
-  userId: int("userId").notNull(),
-  weight: int("weight").notNull(),
-  reps: int("reps").notNull(),
-  /** Denormalized volume = weight × reps */
-  volume: int("volume").notNull(),
-  /** Unix timestamp in ms */
-  performedAt: bigint("performedAt", { mode: "number" }).notNull(),
+// ─── Workout Sets ─────────────────────────────────────────────────────────────
+
+export const workoutSets = pgTable("workout_sets", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("sessionId").notNull().references(() => workoutSessions.id, { onDelete: "cascade" }),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  weight: real("weight").notNull(),
+  reps: integer("reps").notNull(),
+  volume: real("volume").notNull(),
+  setNumber: integer("setNumber").notNull().default(0),
+  performedAt: integer("performedAt").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type WorkoutSet = typeof workoutSets.$inferSelect;
 export type InsertWorkoutSet = typeof workoutSets.$inferInsert;
 
-/**
- * Named workout templates — a saved sequence of sets a user can replay.
- */
-export const workoutTemplates = mysqlTable("workout_templates", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+// ─── Workout Templates ────────────────────────────────────────────────────────
+
+export const workoutTemplates = pgTable("workout_templates", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 64 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const workoutTemplateSets = pgTable("workout_template_sets", {
+  id: serial("id").primaryKey(),
+  templateId: integer("templateId").notNull().references(() => workoutTemplates.id, { onDelete: "cascade" }),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  weight: real("weight").notNull(),
+  reps: integer("reps").notNull(),
+  position: integer("position").notNull().default(0),
 });
 
 export type WorkoutTemplate = typeof workoutTemplates.$inferSelect;
 export type InsertWorkoutTemplate = typeof workoutTemplates.$inferInsert;
-
-/**
- * Individual sets within a template, ordered by position.
- */
-export const workoutTemplateSets = mysqlTable("workout_template_sets", {
-  id: int("id").autoincrement().primaryKey(),
-  templateId: int("templateId").notNull(),
-  userId: int("userId").notNull(),
-  weight: int("weight").notNull(),
-  reps: int("reps").notNull(),
-  position: int("position").notNull().default(0),
-});
-
 export type WorkoutTemplateSet = typeof workoutTemplateSets.$inferSelect;
 export type InsertWorkoutTemplateSet = typeof workoutTemplateSets.$inferInsert;
 
-/**
- * Per-user profile settings: display name, leaderboard opt-in.
- */
-export const userProfiles = mysqlTable("user_profiles", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().unique(),
-  /** Name shown on the leaderboard */
+// ─── User Profiles ────────────────────────────────────────────────────────────
+
+export const userProfiles = pgTable("user_profiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   displayName: varchar("displayName", { length: 32 }),
-  /** Whether the user appears on the public leaderboard */
   leaderboardOptIn: boolean("leaderboardOptIn").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertUserProfile = typeof userProfiles.$inferInsert;
 
-/**
- * Personal records — one row per record type per user.
- * recordType: 'maxWeight' | 'bestVolume' | 'bestRepsAtWeight'
- */
-export const personalRecords = mysqlTable("personal_records", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  /** 'maxWeight' | 'bestVolume' | 'bestSession' */
+// ─── Personal Records ─────────────────────────────────────────────────────────
+
+export const personalRecords = pgTable("personal_records", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   recordType: varchar("recordType", { length: 32 }).notNull(),
-  /** The record value (weight in lbs, volume in lbs, etc.) */
-  value: int("value").notNull(),
-  /** Optional: the weight at which this reps PR was set */
-  atWeight: int("atWeight"),
-  /** The session date when this PR was set */
+  value: real("value").notNull(),
+  atWeight: real("atWeight"),
   setOnDate: varchar("setOnDate", { length: 10 }).notNull(),
-  /** The set id that triggered this PR */
-  setId: int("setId"),
+  setId: integer("setId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type PersonalRecord = typeof personalRecords.$inferSelect;
 export type InsertPersonalRecord = typeof personalRecords.$inferInsert;
+
+// ─── Password Reset Tokens ────────────────────────────────────────────────────
+
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;

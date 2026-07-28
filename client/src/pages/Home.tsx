@@ -4,8 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
+// Standalone auth — no Manus OAuth dependency
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -394,7 +393,7 @@ function LoginScreen() {
               </div>
             ))}
           </div>
-          <Button onClick={() => startLogin()} className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.97] transition-all duration-150">
+          <Button onClick={() => { window.location.href = "/login"; }} className="w-full bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.97] transition-all duration-150">
             <LogIn className="w-4 h-4 mr-2" />
             Sign In to Start
           </Button>
@@ -687,7 +686,11 @@ const TIMER_OPTIONS = [
 
 function Tracker() {
   const utils = trpc.useUtils();
-  const { user, logout } = useAuth();
+  const { data: user } = trpc.auth.me.useQuery();
+  const logoutMutation = trpc.auth.logout.useMutation({
+    onSuccess: () => { window.location.href = "/login"; },
+  });
+  const logout = () => logoutMutation.mutate();
 
   const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(undefined);
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
@@ -1292,7 +1295,8 @@ function Tracker() {
 
 // ─── Root Export ──────────────────────────────────────────────────────────────
 export default function Home() {
-  const { isAuthenticated, loading } = useAuth();
+  const { data: user, isLoading: loading } = trpc.auth.me.useQuery();
+  const isAuthenticated = !!user;
   if (loading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <Loader2 className="w-8 h-8 text-primary animate-spin" />

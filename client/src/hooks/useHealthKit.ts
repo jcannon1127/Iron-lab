@@ -12,6 +12,7 @@
  */
 
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { Health } from "capacitor-health";
 import { useCallback, useEffect, useState } from "react";
 
@@ -52,7 +53,22 @@ export function useHealthKit() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     Health.isHealthAvailable()
-      .then(({ available }) => setIsAvailable(available))
+      .then(({ available }) => {
+        setIsAvailable(available);
+        if (!available) return;
+
+        // Auto-request on first launch (only once — iOS silently skips if already decided)
+        const key = "ironlab_hk_requested";
+        if (!localStorage.getItem(key)) {
+          localStorage.setItem(key, "1");
+          Health.requestHealthPermissions({ permissions: ["READ_WORKOUTS", "WRITE_WORKOUTS"] })
+            .then(() => setHasPermission(true))
+            .catch(() => {/* user dismissed — will be prompted again via banner */});
+        } else {
+          // Assume granted (iOS doesn't let us check)
+          setHasPermission(true);
+        }
+      })
       .catch(() => setIsAvailable(false));
   }, []);
 

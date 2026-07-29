@@ -97,3 +97,13 @@
 - [x] APPLE_BUNDLE_ID added to docker-compose.yml with default value (com.yogademocracy.ironlab)
 - [x] /api/auth/native error handling hardened — malformed/invalid tokens return 401, not 500
 - [ ] JEFF ACTION REQUIRED: Open ios/App/App.xcodeproj in Xcode, build to iPhone, test native Google and Apple sign-in flows, confirm session cookies are minted (cannot be automated — requires physical device + Apple Developer account)
+
+## App Store Submission
+
+- [x] App Store screenshots generated and resized: 4 screens at 1290x2796 (6.5") and 1242x2208 (5.5") — saved to webdev-static-assets/appstore/
+- [x] Write App Store Connect listing copy (title, subtitle, description, keywords, URLs, review notes)
+- [x] Create Xcode archive + TestFlight upload guide (ironlab-xcode-guide.md)
+- [x] App Store Connect setup checklist included in listing copy document
+- [x] App Review test account created: review@ironlab.thisisus.ai / AppReview2026!
+- [x] Vultr database connection fixed (iptables rule + correct gateway IP 172.19.0.1)
+- [ ] JEFF: Complete App Store Connect setup and submit for review (see ironlab-xcode-guide.md)

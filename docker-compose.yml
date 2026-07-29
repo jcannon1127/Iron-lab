@@ -9,7 +9,7 @@ services:
       - "4001:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ironlab:ironlab_secure_2026@172.19.0.1:5432/ironlab}
       JWT_SECRET: ${JWT_SECRET}
       APP_URL: https://ironlab.thisisus.ai
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -20,6 +20,8 @@ services:
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-${GOOGLE_CLIENT_ID:-}}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s

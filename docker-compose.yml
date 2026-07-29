@@ -15,9 +15,11 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
+      APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-com.yogademocracy.ironlab}
       APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-${GOOGLE_CLIENT_ID:-}}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s

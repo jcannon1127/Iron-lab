@@ -93,4 +93,7 @@
 - [x] Apple identity token verification upgraded to JWKS-backed jwtVerify (jose) with issuer/audience/expiry checks
 - [x] Apple native Sign-In uses bundle ID (com.yogademocracy.ironlab) instead of VITE_APPLE_CLIENT_ID
 - [x] APPLE_CLIENT_ID / APPLE_BUNDLE_ID env var needed on Vultr for Apple token audience check
-- [ ] Deploy to Vultr and verify native auth flow
+- [x] Deploy to Vultr — Docker image rebuilt, container restarted, Caddy updated to port 4001, /api/auth/native live and routing correctly
+- [x] APPLE_BUNDLE_ID added to docker-compose.yml with default value (com.yogademocracy.ironlab)
+- [x] /api/auth/native error handling hardened — malformed/invalid tokens return 401, not 500
+- [ ] Manual device test — build on iPhone, verify Google and Apple native sign-in mint session cookies (requires physical device + Xcode)

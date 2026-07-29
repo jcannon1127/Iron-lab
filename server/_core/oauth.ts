@@ -405,9 +405,22 @@ export function registerOAuthRoutes(app: Express) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "UNKNOWN";
       console.error("[Auth] Native auth failed:", err);
-      if (msg === "GOOGLE_NOT_CONFIGURED") {
-        res.status(503).json({ error: "Google Sign-In is not configured on this server" });
-      } else if (msg === "GOOGLE_TOKEN_INVALID" || msg === "APPLE_TOKEN_INVALID") {
+      if (msg === "GOOGLE_NOT_CONFIGURED" || msg === "APPLE_NOT_CONFIGURED") {
+        res.status(503).json({ error: "Sign-In provider is not configured on this server" });
+      } else if (
+        msg === "GOOGLE_TOKEN_INVALID" ||
+        msg === "APPLE_TOKEN_INVALID" ||
+        // google-auth-library throws these for malformed/expired tokens
+        msg.includes("Wrong number of segments") ||
+        msg.includes("Token used too late") ||
+        msg.includes("Token used too early") ||
+        msg.includes("Invalid token signature") ||
+        msg.includes("No pem found") ||
+        // jose throws these for Apple JWKS failures
+        msg.includes("JWTExpired") ||
+        msg.includes("JWSSignatureVerificationFailed") ||
+        msg.includes("JWTClaimValidationFailed")
+      ) {
         res.status(401).json({ error: "Identity token is invalid or expired" });
       } else {
         res.status(500).json({ error: "Native authentication failed" });

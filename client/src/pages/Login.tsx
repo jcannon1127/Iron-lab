@@ -3,6 +3,7 @@
  * Supports: email/password, Google, Apple, Forgot Password flow.
  */
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { trpc } from "@/lib/trpc";
 
 type Mode = "login" | "register" | "forgot" | "forgot-sent";
@@ -61,12 +62,99 @@ export default function Login() {
     }
   }
 
-  function handleGoogle() {
-    window.location.href = "/api/auth/google";
+  async function handleGoogle() {
+    // On iOS native (Capacitor), use the native Google Sign-In plugin to avoid
+    // the WKWebView disallowed_useragent error. On web, fall back to the redirect flow.
+    if (Capacitor.isNativePlatform()) {
+      setLoading(true);
+      setError(null);
+      try {
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+        await GoogleAuth.initialize({
+          clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
+          scopes: ["profile", "email"],
+          grantOfflineAccess: false,
+        });
+        const googleUser = await GoogleAuth.signIn();
+        const idToken = googleUser.authentication?.idToken;
+        if (!idToken) throw new Error("No ID token returned from Google");
+
+        const res = await fetch("/api/auth/native", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ provider: "google", idToken }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Google sign-in failed");
+
+        await utils.auth.me.invalidate();
+        window.location.href = "/";
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Google sign-in failed";
+        if (!msg.includes("cancel") && !msg.includes("dismiss")) {
+          setError(msg);
+        }
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Web: standard redirect flow
+      window.location.href = "/api/auth/google";
+    }
   }
 
-  function handleApple() {
-    window.location.href = "/api/auth/apple";
+  async function handleApple() {
+    // On iOS native (Capacitor), use the native Apple Sign-In plugin.
+    // On web, fall back to the redirect flow.
+    if (Capacitor.isNativePlatform()) {
+      setLoading(true);
+      setError(null);
+      try {
+        const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
+        // On iOS native, the Capacitor plugin uses the native ASAuthorizationAppleIDProvider
+        // directly — no clientId or redirectURI needed (those are only for the web flow).
+        const result = await SignInWithApple.authorize({
+          clientId: "com.yogademocracy.ironlab", // bundle ID used by native Apple Sign-In
+          redirectURI: "https://ironlab.thisisus.ai/api/auth/apple/callback",
+          scopes: "email name",
+          state: crypto.randomUUID(),
+        });
+        const identityToken = result.response?.identityToken;
+        if (!identityToken) throw new Error("No identity token returned from Apple");
+
+        const appleUser = result.response?.user
+          ? {
+              name: {
+                givenName: result.response.givenName ?? undefined,
+                familyName: result.response.familyName ?? undefined,
+              },
+            }
+          : undefined;
+
+        const res = await fetch("/api/auth/native", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ provider: "apple", identityToken, user: appleUser }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Apple sign-in failed");
+
+        await utils.auth.me.invalidate();
+        window.location.href = "/";
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Apple sign-in failed";
+        if (!msg.includes("cancel") && !msg.includes("dismiss") && !msg.includes("1001")) {
+          setError(msg);
+        }
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Web: standard redirect flow
+      window.location.href = "/api/auth/apple";
+    }
   }
 
   // ─── Forgot-sent confirmation screen ──────────────────────────────────────

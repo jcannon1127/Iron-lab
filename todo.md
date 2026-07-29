@@ -65,7 +65,7 @@
 
 ## App Store Readiness Roadmap
 
-- [ ] Publish Google OAuth consent screen (remove testing-mode restriction)
+- [ ] Publish Google OAuth consent screen — PENDING JEFF: go to console.cloud.google.com/apis/credentials/consent, fill in homepage/privacy/terms URLs, click Publish App
 - [x] Privacy Policy page at /privacy (Google OAuth requirement)
 - [x] Terms of Service page at /terms
 - [x] Login page footer links to Privacy and Terms
@@ -81,3 +81,16 @@
 - [x] Mobile UI — touch-target CSS class + touch-action:manipulation applied globally; all buttons/links have min 44px via touch-target utility
 - [x] Mobile UI — bottom nav deferred (app is single-page, header nav sufficient for current feature set)
 - [x] HealthKit: request permissions on first launch — auto-requests on first native launch via localStorage guard
+
+## Native Auth Fix (BLOCKING for TestFlight)
+
+- [x] Install @codetrix-studio/capacitor-google-auth plugin
+- [x] Install @capacitor-community/apple-sign-in plugin
+- [x] Add /api/auth/native endpoint — verifies Google ID token (google-auth-library) + Apple identity token, mints session cookie
+- [x] Update Login.tsx — Capacitor.isNativePlatform() guard: native plugins on iOS, web redirect on browser
+- [x] Run npx cap sync ios after plugin install
+- [x] VITE_GOOGLE_CLIENT_ID env var set for native Google Sign-In
+- [x] Apple identity token verification upgraded to JWKS-backed jwtVerify (jose) with issuer/audience/expiry checks
+- [x] Apple native Sign-In uses bundle ID (com.yogademocracy.ironlab) instead of VITE_APPLE_CLIENT_ID
+- [x] APPLE_CLIENT_ID / APPLE_BUNDLE_ID env var needed on Vultr for Apple token audience check
+- [ ] Deploy to Vultr and verify native auth flow

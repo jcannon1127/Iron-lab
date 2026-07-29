@@ -11,6 +11,9 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import type { Express, Request, Response } from "express";
+import { OAuth2Client } from "google-auth-library";
+import jwt from "jsonwebtoken";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
   registerWithEmail,
   loginWithEmail,
@@ -24,6 +27,10 @@ import {
 } from "../auth";
 import {
   getUserByEmail,
+  getUserByGoogleId,
+  getUserByAppleId,
+  createUser,
+  touchLastSignedIn,
   createPasswordResetToken,
   getPasswordResetToken,
   markPasswordResetTokenUsed,
@@ -31,6 +38,110 @@ import {
   getUserById,
 } from "../db";
 import { sendPasswordResetEmail } from "../email";
+
+// ─── Native auth helpers ───────────────────────────────────────────────────────
+// Used by the Capacitor iOS app to exchange a native identity token for a session cookie.
+// Google: verifies the ID token from @codetrix-studio/capacitor-google-auth
+// Apple:  verifies the identity token from @capacitor-community/apple-sign-in
+
+async function verifyGoogleIdToken(idToken: string): Promise<{
+  sub: string;
+  email?: string;
+  name?: string;
+  emailVerified: boolean;
+}> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) throw new Error("GOOGLE_NOT_CONFIGURED");
+  const client = new OAuth2Client(clientId);
+  const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+  const payload = ticket.getPayload();
+  if (!payload?.sub) throw new Error("GOOGLE_TOKEN_INVALID");
+  return {
+    sub: payload.sub,
+    email: payload.email,
+    name: payload.name,
+    emailVerified: payload.email_verified ?? false,
+  };
+}
+
+// Apple JWKS endpoint — cached by jose automatically
+const APPLE_JWKS = createRemoteJWKSet(
+  new URL("https://appleid.apple.com/auth/keys")
+);
+
+async function verifyAppleIdentityToken(identityToken: string): Promise<{
+  sub: string;
+  email?: string;
+}> {
+  // Verify the Apple identity token using Apple's published JWKS.
+  // Checks: signature, issuer (https://appleid.apple.com), audience (APPLE_CLIENT_ID or bundle ID),
+  // and expiry. This is the correct approach for native Sign in with Apple.
+  const appleClientId = process.env.APPLE_CLIENT_ID ?? process.env.APPLE_BUNDLE_ID;
+  if (!appleClientId) throw new Error("APPLE_NOT_CONFIGURED");
+
+  const { payload } = await jwtVerify(identityToken, APPLE_JWKS, {
+    issuer: "https://appleid.apple.com",
+    audience: appleClientId,
+  });
+
+  const sub = typeof payload.sub === "string" ? payload.sub : undefined;
+  if (!sub) throw new Error("APPLE_TOKEN_INVALID");
+
+  const email = typeof payload.email === "string" ? payload.email : undefined;
+  return { sub, email };
+}
+
+async function findOrCreateGoogleUser(googleSub: string, email?: string, name?: string, emailVerified = false) {
+  let user = await getUserByGoogleId(googleSub);
+  if (!user && email && emailVerified) {
+    user = await getUserByEmail(email);
+  }
+  if (user) {
+    if (!user.googleId) {
+      const db = await (await import("../db")).getDb();
+      if (db) {
+        const { users } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.update(users).set({ googleId: googleSub }).where(eq(users.id, user.id));
+      }
+    }
+    await touchLastSignedIn(user.id);
+    return user;
+  }
+  return createUser({
+    name: name ?? null,
+    email: email?.toLowerCase() ?? null,
+    googleId: googleSub,
+    loginMethod: "google",
+    emailVerified,
+  });
+}
+
+async function findOrCreateAppleUser(appleSub: string, email?: string, name?: string) {
+  let user = await getUserByAppleId(appleSub);
+  if (!user && email) {
+    user = await getUserByEmail(email);
+  }
+  if (user) {
+    if (!user.appleId) {
+      const db = await (await import("../db")).getDb();
+      if (db) {
+        const { users } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.update(users).set({ appleId: appleSub }).where(eq(users.id, user.id));
+      }
+    }
+    await touchLastSignedIn(user.id);
+    return user;
+  }
+  return createUser({
+    name: name ?? null,
+    email: email?.toLowerCase() ?? null,
+    appleId: appleSub,
+    loginMethod: "apple",
+    emailVerified: true, // Apple verifies email before sharing it
+  });
+}
 
 // ─── Rate limiters ─────────────────────────────────────────────────────────────
 
@@ -242,6 +353,67 @@ export function registerOAuthRoutes(app: Express) {
     }
   });
 
+  // ─── Native Auth (Capacitor iOS) ─────────────────────────────────────────────
+  // POST /api/auth/native
+  // Body: { provider: "google", idToken: string } | { provider: "apple", identityToken: string, user?: { name?: { givenName, familyName } } }
+  // Response: { success: true, user: { id, name, email } } + sets ironlab_session cookie
+  //
+  // Called by the Capacitor iOS app after native Google/Apple sign-in succeeds.
+  // Bypasses the web redirect flow entirely — no WKWebView navigation to accounts.google.com.
+
+  app.post("/api/auth/native", authLimiter, async (req: Request, res: Response) => {
+    const { provider } = req.body ?? {};
+
+    try {
+      if (provider === "google") {
+        const { idToken } = req.body ?? {};
+        if (!idToken || typeof idToken !== "string") {
+          res.status(400).json({ error: "idToken is required for Google native auth" });
+          return;
+        }
+        const googleUser = await verifyGoogleIdToken(idToken);
+        const user = await findOrCreateGoogleUser(
+          googleUser.sub,
+          googleUser.email,
+          googleUser.name,
+          googleUser.emailVerified
+        );
+        const token = signToken(user.id, user.email ?? null);
+        setSessionCookie(res, token);
+        res.json({ success: true, user: { id: user.id, name: user.name, email: user.email } });
+
+      } else if (provider === "apple") {
+        const { identityToken, user: appleUserData } = req.body ?? {};
+        if (!identityToken || typeof identityToken !== "string") {
+          res.status(400).json({ error: "identityToken is required for Apple native auth" });
+          return;
+        }
+        const applePayload = await verifyAppleIdentityToken(identityToken);
+        let name: string | undefined;
+        if (appleUserData?.name) {
+          const { givenName, familyName } = appleUserData.name;
+          name = [givenName, familyName].filter(Boolean).join(" ") || undefined;
+        }
+        const user = await findOrCreateAppleUser(applePayload.sub, applePayload.email, name);
+        const token = signToken(user.id, user.email ?? null);
+        setSessionCookie(res, token);
+        res.json({ success: true, user: { id: user.id, name: user.name, email: user.email } });
+
+      } else {
+        res.status(400).json({ error: "provider must be \'google\' or \'apple\'" });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "UNKNOWN";
+      console.error("[Auth] Native auth failed:", err);
+      if (msg === "GOOGLE_NOT_CONFIGURED") {
+        res.status(503).json({ error: "Google Sign-In is not configured on this server" });
+      } else if (msg === "GOOGLE_TOKEN_INVALID" || msg === "APPLE_TOKEN_INVALID") {
+        res.status(401).json({ error: "Identity token is invalid or expired" });
+      } else {
+        res.status(500).json({ error: "Native authentication failed" });
+      }
+    }
+  });
   // ─── Apple Sign-In ─────────────────────────────────────────────────────────
 
   app.get("/api/auth/apple", (req: Request, res: Response) => {

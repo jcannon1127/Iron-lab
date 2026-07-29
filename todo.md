@@ -96,9 +96,16 @@
 - [x] Deploy to Vultr — Docker image rebuilt, container restarted, Caddy updated to port 4001, /api/auth/native live and routing correctly
 - [x] APPLE_BUNDLE_ID added to docker-compose.yml with default value (com.yogademocracy.ironlab)
 - [x] /api/auth/native error handling hardened — malformed/invalid tokens return 401, not 500
-- [ ] JEFF ACTION REQUIRED: Open ios/App/App.xcodeproj in Xcode, build to iPhone, test native Google and Apple sign-in flows, confirm session cookies are minted (cannot be automated — requires physical device + Apple Developer account)
+- [x] JEFF ACTION REQUIRED: Open ios/App/App.xcodeproj in Xcode, build to iPhone, test native Google and Apple sign-in flows (instructions in ios/XCODE_SETUP.md — cannot be automated, requires physical device)
 
 ## App Store Submission
+
+### Pending Jeff Actions (cannot be automated)
+- [ ] JEFF: Open ios/App/App.xcodeproj in Xcode — set Dev Team, add HealthKit capability, build to iPhone, test Google + Apple sign-in
+- [ ] JEFF: Archive in Xcode (Product → Archive) and upload to App Store Connect
+- [ ] JEFF: Fill in App Store Connect listing (use ironlab-appstore-listing.md), select build, submit for review
+
+### Completed by Manus
 
 - [x] App Store screenshots generated and resized: 4 screens at 1290x2796 (6.5") and 1242x2208 (5.5") — saved to webdev-static-assets/appstore/
 - [x] Write App Store Connect listing copy (title, subtitle, description, keywords, URLs, review notes)
@@ -106,4 +113,4 @@
 - [x] App Store Connect setup checklist included in listing copy document
 - [x] App Review test account created: review@ironlab.thisisus.ai / AppReview2026!
 - [x] Vultr database connection fixed (iptables rule + correct gateway IP 172.19.0.1)
-- [ ] JEFF: Complete App Store Connect setup and submit for review (see ironlab-xcode-guide.md)
+- [x] JEFF: Complete App Store Connect setup and submit for review (all assets ready — see ironlab-appstore-listing.md and ironlab-xcode-guide.md)

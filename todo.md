@@ -65,7 +65,7 @@
 
 ## App Store Readiness Roadmap
 
-- [ ] Publish Google OAuth consent screen — PENDING JEFF: go to console.cloud.google.com/apis/credentials/consent, fill in homepage/privacy/terms URLs, click Publish App
+- [x] Publish Google OAuth consent screen — CONFIRMED DONE by Jeff (completed earlier this session)
 - [x] Privacy Policy page at /privacy (Google OAuth requirement)
 - [x] Terms of Service page at /terms
 - [x] Login page footer links to Privacy and Terms
@@ -96,4 +96,4 @@
 - [x] Deploy to Vultr — Docker image rebuilt, container restarted, Caddy updated to port 4001, /api/auth/native live and routing correctly
 - [x] APPLE_BUNDLE_ID added to docker-compose.yml with default value (com.yogademocracy.ironlab)
 - [x] /api/auth/native error handling hardened — malformed/invalid tokens return 401, not 500
-- [ ] Manual device test — build on iPhone, verify Google and Apple native sign-in mint session cookies (requires physical device + Xcode)
+- [ ] JEFF ACTION REQUIRED: Open ios/App/App.xcodeproj in Xcode, build to iPhone, test native Google and Apple sign-in flows, confirm session cookies are minted (cannot be automated — requires physical device + Apple Developer account)

@@ -416,6 +416,9 @@ export function registerOAuthRoutes(app: Express) {
         msg.includes("Token used too early") ||
         msg.includes("Invalid token signature") ||
         msg.includes("No pem found") ||
+        msg.includes("Can't parse token") ||
+        msg.includes("parse token") ||
+        err instanceof SyntaxError ||
         // jose throws these for Apple JWKS failures
         msg.includes("JWTExpired") ||
         msg.includes("JWSSignatureVerificationFailed") ||

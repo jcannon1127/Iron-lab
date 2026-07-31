@@ -24,6 +24,10 @@ import {
   getDailyLeaderboard,
   getAllTimeLeaderboard,
   deleteUser,
+  getSessionsByDateAndSport,
+  updateSwimSessionTotals,
+  updatePoolLengthAndGoal,
+  getSwimLeaderboard,
 } from "./db";
 
 const REP_GOAL = 100;
@@ -110,8 +114,8 @@ export const appRouter = router({
           performedAt: Date.now(),
         });
         const allSets = await getSessionSets(session.id);
-        const totalReps = allSets.reduce((sum, s) => sum + s.reps, 0);
-        const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
+        const totalReps = allSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
+        const totalVolume = allSets.reduce((sum, s) => sum + (s.volume ?? 0), 0);
         await updateSessionTotals(session.id, totalReps, totalVolume, REP_GOAL);
         return { set: newSet, sessionId: session.id, totalReps, totalVolume, completed: totalReps >= REP_GOAL };
       }),
@@ -125,8 +129,8 @@ export const appRouter = router({
         if (!session) throw new Error("No session found for today");
         await deleteSet(input.setId, ctx.user.id);
         const allSets = await getSessionSets(session.id);
-        const totalReps = allSets.reduce((sum, s) => sum + s.reps, 0);
-        const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
+        const totalReps = allSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
+        const totalVolume = allSets.reduce((sum, s) => sum + (s.volume ?? 0), 0);
         await updateSessionTotals(session.id, totalReps, totalVolume, REP_GOAL);
         await recomputePRsForUser(ctx.user.id);
         return { totalReps, totalVolume, completed: totalReps >= REP_GOAL };
@@ -141,8 +145,8 @@ export const appRouter = router({
         if (!session) throw new Error("No session found for today");
         await editSet(input.setId, ctx.user.id, input.weight, input.reps);
         const allSets = await getSessionSets(session.id);
-        const totalReps = allSets.reduce((sum, s) => sum + s.reps, 0);
-        const totalVolume = allSets.reduce((sum, s) => sum + s.volume, 0);
+        const totalReps = allSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
+        const totalVolume = allSets.reduce((sum, s) => sum + (s.volume ?? 0), 0);
         await updateSessionTotals(session.id, totalReps, totalVolume, session.goal);
         await recomputePRsForUser(ctx.user.id);
         return { totalReps, totalVolume, completed: totalReps >= session.goal };
@@ -244,6 +248,130 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         return upsertUserProfile(ctx.user.id, input);
+      }),
+
+    /** Update pool length and swim yards goal */
+    updateSwimSettings: protectedProcedure
+      .input(z.object({
+        poolLength: z.enum(["25yd", "25m", "50m"]),
+        swimYardsGoal: z.number().int().min(100).max(20000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return updatePoolLengthAndGoal(ctx.user.id, input.poolLength, input.swimYardsGoal);
+      }),
+  }),
+
+  swim: router({
+    /** Get or create today's swim session */
+    getTodaySession: protectedProcedure.query(async ({ ctx }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      let session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
+      if (!session) {
+        session = await createSession({
+          userId: ctx.user.id,
+          date: today,
+          label: formatDateLabel(today),
+          goal: 0,
+          totalReps: 0,
+          totalVolume: 0,
+          completed: false,
+          sport: "swimming",
+          totalYards: 0,
+        });
+      }
+      const sets = await getSessionSets(session.id);
+      return { ...session, sets };
+    }),
+
+    /** Add a swim block (e.g. 12 × 25 on 0:40) */
+    addBlock: protectedProcedure
+      .input(z.object({
+        distanceYards: z.number().int().positive(),
+        repCount: z.number().int().positive(),
+        swimTimeSeconds: z.number().int().positive().optional(),
+        intervalSeconds: z.number().int().positive().optional(),
+        stroke: z.enum(["freestyle", "breaststroke", "backstroke", "butterfly", "mixed"]).default("freestyle"),
+        isWarmup: z.boolean().default(false),
+        isCooldown: z.boolean().default(false),
+        swimYardsGoal: z.number().int().min(100).max(20000).default(1500),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        let session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
+        if (!session) {
+          session = await createSession({
+            userId: ctx.user.id,
+            date: today,
+            label: formatDateLabel(today),
+            goal: 0,
+            totalReps: 0,
+            totalVolume: 0,
+            completed: false,
+            sport: "swimming",
+            totalYards: 0,
+          });
+        }
+        const blockYards = input.distanceYards * input.repCount;
+        const newSet = await addSet({
+          sessionId: session.id,
+          userId: ctx.user.id,
+          sport: "swimming",
+          distanceYards: input.distanceYards,
+          repCount: input.repCount,
+          swimTimeSeconds: input.swimTimeSeconds,
+          intervalSeconds: input.intervalSeconds,
+          stroke: input.stroke,
+          isWarmup: input.isWarmup,
+          isCooldown: input.isCooldown,
+          performedAt: Date.now(),
+        });
+        const allSets = await getSessionSets(session.id);
+        const totalYards = allSets.reduce((sum, s) => sum + (s.distanceYards ?? 0) * (s.repCount ?? 1), 0);
+        await updateSwimSessionTotals(session.id, totalYards, input.swimYardsGoal);
+        return { set: newSet, sessionId: session.id, totalYards, blockYards, completed: totalYards >= input.swimYardsGoal };
+      }),
+
+    /** Delete a swim block */
+    deleteBlock: protectedProcedure
+      .input(z.object({ setId: z.number().int().positive(), swimYardsGoal: z.number().int().min(100).max(20000).default(1500) }))
+      .mutation(async ({ ctx, input }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
+        if (!session) throw new Error("No swim session found for today");
+        await deleteSet(input.setId, ctx.user.id);
+        const allSets = await getSessionSets(session.id);
+        const totalYards = allSets.reduce((sum, s) => sum + (s.distanceYards ?? 0) * (s.repCount ?? 1), 0);
+        await updateSwimSessionTotals(session.id, totalYards, input.swimYardsGoal);
+        return { totalYards, completed: totalYards >= input.swimYardsGoal };
+      }),
+
+    /** Reset today's swim session */
+    resetToday: protectedProcedure.mutation(async ({ ctx }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
+      if (session) await deleteSession(session.id, ctx.user.id);
+      return { success: true };
+    }),
+
+    /** Get all swim sessions for history/chart */
+    getSessions: protectedProcedure.query(async ({ ctx }) => {
+      const sessions = await getUserSessions(ctx.user.id);
+      const swimSessions = sessions.filter((s) => s.sport === "swimming");
+      const withSets = await Promise.all(
+        swimSessions.map(async (session) => {
+          const sets = await getSessionSets(session.id);
+          return { ...session, sets };
+        })
+      );
+      return withSets;
+    }),
+
+    /** Daily swim leaderboard */
+    leaderboard: protectedProcedure
+      .input(z.object({ date: z.string().optional() }))
+      .query(async ({ input }) => {
+        const date = input.date ?? new Date().toISOString().slice(0, 10);
+        return getSwimLeaderboard(date);
       }),
   }),
 

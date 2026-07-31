@@ -38,6 +38,10 @@ import {
   BookMarked,
   Zap,
   AlertTriangle,
+  Waves,
+  Droplets,
+  Clock,
+  MapPin,
 } from "lucide-react";
 import { HealthKitBanner, HealthKitSaveButton } from "@/components/HealthKitSync";
 
@@ -700,11 +704,121 @@ function Tracker() {
   });
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
+  // ── Sport selector ──────────────────────────────────────────────────────────
+  const [currentSport, setCurrentSport] = useState<"bench" | "swim">("bench");
+
+  // ── Bench press queries ──────────────────────────────────────────────────────
   const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(undefined);
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
 
+  // ── Swim queries ─────────────────────────────────────────────────────────────
+  const { data: swimTodayData, isLoading: swimTodayLoading } = trpc.swim.getTodaySession.useQuery(undefined);
+  const { data: swimSessions, isLoading: swimSessionsLoading } = trpc.swim.getSessions.useQuery(undefined);
+  const { data: swimLeaderboard } = trpc.swim.leaderboard.useQuery({ date: new Date().toISOString().slice(0, 10) });
+
+  // ── Swim mutations ────────────────────────────────────────────────────────────
+  const addBlockMutation = trpc.swim.addBlock.useMutation({
+    onSuccess: () => { utils.swim.getTodaySession.invalidate(); utils.swim.getSessions.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteBlockMutation = trpc.swim.deleteBlock.useMutation({
+    onSuccess: () => { utils.swim.getTodaySession.invalidate(); utils.swim.getSessions.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const swimResetMutation = trpc.swim.resetToday.useMutation({
+    onSuccess: () => { utils.swim.getTodaySession.invalidate(); utils.swim.getSessions.invalidate(); toast.info("Swim session cleared"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateSwimSettingsMutation = trpc.profile.updateSwimSettings.useMutation({
+    onSuccess: () => { utils.profile.get.invalidate(); toast.success("Swim settings saved!"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // ── Swim UI state ─────────────────────────────────────────────────────────────
+  const [swimDistInput, setSwimDistInput] = useState("25");
+  const [swimRepsInput, setSwimRepsInput] = useState("1");
+  const [swimTimeInput, setSwimTimeInput] = useState("");
+  const [swimIntervalInput, setSwimIntervalInput] = useState("");
+  const [swimStroke, setSwimStroke] = useState<"freestyle" | "breaststroke" | "backstroke" | "butterfly" | "mixed">("freestyle");
+  const [swimIsWarmup, setSwimIsWarmup] = useState(false);
+  const [swimIsCooldown, setSwimIsCooldown] = useState(false);
+  const [showSwimSettings, setShowSwimSettings] = useState(false);
+  const [poolLengthInput, setPoolLengthInput] = useState<"25yd" | "25m" | "50m">("25yd");
+  const [swimGoalInput, setSwimGoalInput] = useState("1500");
+
+  const swimYardsGoal = parseInt(swimGoalInput, 10) || 1500;
+  const swimTotalYards = swimTodayData?.totalYards ?? 0;
+  const swimSets = useMemo(() => swimTodayData?.sets ?? [], [swimTodayData]);
+  const swimProgressPct = Math.min((swimTotalYards / swimYardsGoal) * 100, 100);
+  const swimGoalAchieved = swimTodayData?.completed ?? false;
+  const swimTodayLabel = swimTodayData?.label ?? new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  // Parse time string "m:ss" or "ss" to seconds
+  const parseTimeInput = (s: string): number | undefined => {
+    if (!s.trim()) return undefined;
+    const parts = s.split(":");
+    if (parts.length === 2) {
+      const m = parseInt(parts[0], 10);
+      const sec = parseInt(parts[1], 10);
+      if (!isNaN(m) && !isNaN(sec)) return m * 60 + sec;
+    }
+    const sec = parseInt(s, 10);
+    return isNaN(sec) ? undefined : sec;
+  };
+
+  // Format seconds to "m:ss"
+  const formatSeconds = (secs: number): string => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
+  };
+
+  // Pace per 100 yards/meters
+  const calcPace = (swimTimeSecs: number, distYards: number, reps: number): string => {
+    const totalYards = distYards * reps;
+    if (totalYards === 0) return "—";
+    const secsPerHundred = (swimTimeSecs / totalYards) * 100;
+    return formatSeconds(Math.round(secsPerHundred)) + "/100yd";
+  };
+
+  const handleAddBlock = useCallback(() => {
+    const dist = parseInt(swimDistInput, 10);
+    const reps = parseInt(swimRepsInput, 10);
+    if (!dist || dist <= 0) { toast.error("Enter a valid distance"); return; }
+    if (!reps || reps <= 0) { toast.error("Enter valid reps"); return; }
+    const swimTimeSecs = parseTimeInput(swimTimeInput);
+    const intervalSecs = parseTimeInput(swimIntervalInput);
+    addBlockMutation.mutate({
+      distanceYards: dist,
+      repCount: reps,
+      swimTimeSeconds: swimTimeSecs,
+      intervalSeconds: intervalSecs,
+      stroke: swimStroke,
+      isWarmup: swimIsWarmup,
+      isCooldown: swimIsCooldown,
+      swimYardsGoal,
+    }, {
+      onSuccess: (data) => {
+        toast.success(`+${data.blockYards} yards logged!`);
+        if (data.completed && !swimGoalAchieved) toast.success("🏊 Goal achieved! Great swim!");
+        setSwimTimeInput("");
+        setSwimIntervalInput("");
+        setSwimIsWarmup(false);
+        setSwimIsCooldown(false);
+      },
+    });
+  }, [swimDistInput, swimRepsInput, swimTimeInput, swimIntervalInput, swimStroke, swimIsWarmup, swimIsCooldown, swimYardsGoal, addBlockMutation, swimGoalAchieved]);
+
   const { data: prs } = trpc.workout.getPRs.useQuery(undefined);
   const { data: profile } = trpc.profile.get.useQuery(undefined);
+
+  // Sync pool settings from profile (must be after profile query)
+  useEffect(() => {
+    if (profile) {
+      setPoolLengthInput((profile.poolLength as "25yd" | "25m" | "50m") ?? "25yd");
+      setSwimGoalInput(String(profile.swimYardsGoal ?? 1500));
+    }
+  }, [profile]);
   const { data: dailyBoard } = trpc.leaderboard.daily.useQuery({ date: new Date().toISOString().slice(0, 10) });
   const { data: allTimeBoard } = trpc.leaderboard.allTime.useQuery(undefined);
   const updateProfileMutation = trpc.profile.update.useMutation({
@@ -873,7 +987,7 @@ function Tracker() {
         <ShareModal
           label={todayLabel} totalReps={totalReps} totalVolume={totalVolume}
           goal={REP_GOAL} completed={goalAchieved}
-          sets={sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
+          sets={sets.filter(s => s.weight != null && s.reps != null && s.volume != null).map((s) => ({ weight: s.weight!, reps: s.reps!, volume: s.volume! }))}
           onClose={() => setShowShare(false)}
         />
       )}
@@ -891,32 +1005,77 @@ function Tracker() {
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-                <Dumbbell className="w-4 h-4 text-primary-foreground" />
+                {currentSport === "swim" ? <Waves className="w-4 h-4 text-primary-foreground" /> : <Dumbbell className="w-4 h-4 text-primary-foreground" />}
               </div>
               <div>
-                <h1 className="font-display text-base font-semibold text-foreground leading-none tracking-wide uppercase">Bench Press</h1>
+                <h1 className="font-display text-base font-semibold text-foreground leading-none tracking-wide uppercase">
+                  {currentSport === "swim" ? "Swimming" : "Bench Press"}
+                </h1>
                 <p className="text-xs text-muted-foreground leading-none mt-0.5">Iron Lab{user?.name ? ` · ${user.name}` : ""}</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-right hidden sm:block">
-                <div className="font-display text-xl font-bold text-foreground leading-none">
-                  <AnimatedNumber value={totalReps} />
-                  <span className="text-xs font-normal text-muted-foreground ml-1">/ {REP_GOAL} reps</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">{setCount} sets today</div>
+              {/* Sport toggle */}
+              <div className="flex items-center rounded-lg border border-border bg-card p-0.5 gap-0.5">
+                <button
+                  onClick={() => setCurrentSport("bench")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-display font-semibold uppercase tracking-wide transition-all duration-150 ${
+                    currentSport === "bench"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}>
+                  <Dumbbell className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Bench</span>
+                </button>
+                <button
+                  onClick={() => setCurrentSport("swim")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-display font-semibold uppercase tracking-wide transition-all duration-150 ${
+                    currentSport === "swim"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}>
+                  <Waves className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Swim</span>
+                </button>
               </div>
-              <div className="text-right hidden md:block">
-                <div className="font-display text-xl font-bold text-primary leading-none">
-                  <AnimatedNumber value={totalVolume} />
-                  <span className="text-xs font-normal text-muted-foreground ml-1">lbs</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">total volume</div>
-              </div>
-              {goalAchieved && (
-                <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 font-display text-xs">
-                  <Trophy className="w-3 h-3 mr-1" /> GOAL MET
-                </Badge>
+              {currentSport === "bench" && (
+                <>
+                  <div className="text-right hidden sm:block">
+                    <div className="font-display text-xl font-bold text-foreground leading-none">
+                      <AnimatedNumber value={totalReps} />
+                      <span className="text-xs font-normal text-muted-foreground ml-1">/ {REP_GOAL} reps</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{setCount} sets today</div>
+                  </div>
+                  <div className="text-right hidden md:block">
+                    <div className="font-display text-xl font-bold text-primary leading-none">
+                      <AnimatedNumber value={totalVolume} />
+                      <span className="text-xs font-normal text-muted-foreground ml-1">lbs</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">total volume</div>
+                  </div>
+                  {goalAchieved && (
+                    <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 font-display text-xs">
+                      <Trophy className="w-3 h-3 mr-1" /> GOAL MET
+                    </Badge>
+                  )}
+                </>
+              )}
+              {currentSport === "swim" && (
+                <>
+                  <div className="text-right hidden sm:block">
+                    <div className="font-display text-xl font-bold text-foreground leading-none">
+                      <AnimatedNumber value={swimTotalYards} />
+                      <span className="text-xs font-normal text-muted-foreground ml-1">/ {swimYardsGoal} yd</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{swimSets.length} blocks today</div>
+                  </div>
+                  {swimGoalAchieved && (
+                    <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30 font-display text-xs">
+                      <Trophy className="w-3 h-3 mr-1" /> GOAL MET
+                    </Badge>
+                  )}
+                </>
               )}
               <button onClick={() => logout()} title="Sign out"
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-400/10">
@@ -934,27 +1093,55 @@ function Tracker() {
       {/* ── Progress Bar ── */}
       <div className="border-b border-border bg-card/50">
         <div className="container py-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-2">
-              <Target className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{REP_GOAL}-Rep Goal</span>
-              <button onClick={() => setShowGoalPicker(true)} className="text-muted-foreground hover:text-primary transition-colors" title="Change goal">
-                <Settings2 className="w-3 h-3" />
-              </button>
-            </div>
-            <span className="font-display text-sm font-semibold text-foreground">
-              {Math.round(progressPct)}%
-              {repsRemaining > 0 && <span className="text-xs font-normal text-muted-foreground ml-2">{repsRemaining} to go</span>}
-            </span>
-          </div>
-          <div className="h-2 rounded-full bg-border overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${progressPct}%`,
-                background: goalAchieved ? "oklch(0.68 0.18 145)" : "linear-gradient(90deg, oklch(0.65 0.18 45), oklch(0.72 0.18 45))",
-                boxShadow: goalAchieved ? "0 0 12px oklch(0.68 0.18 145 / 0.5)" : "0 0 12px oklch(0.72 0.18 45 / 0.4)",
-              }} />
-          </div>
+          {currentSport === "bench" ? (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Target className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{REP_GOAL}-Rep Goal</span>
+                  <button onClick={() => setShowGoalPicker(true)} className="text-muted-foreground hover:text-primary transition-colors" title="Change goal">
+                    <Settings2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <span className="font-display text-sm font-semibold text-foreground">
+                  {Math.round(progressPct)}%
+                  {repsRemaining > 0 && <span className="text-xs font-normal text-muted-foreground ml-2">{repsRemaining} to go</span>}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-border overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${progressPct}%`,
+                    background: goalAchieved ? "oklch(0.68 0.18 145)" : "linear-gradient(90deg, oklch(0.65 0.18 45), oklch(0.72 0.18 45))",
+                    boxShadow: goalAchieved ? "0 0 12px oklch(0.68 0.18 145 / 0.5)" : "0 0 12px oklch(0.72 0.18 45 / 0.4)",
+                  }} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Waves className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{swimYardsGoal}-Yard Goal</span>
+                  <button onClick={() => setShowSwimSettings(true)} className="text-muted-foreground hover:text-cyan-400 transition-colors" title="Pool settings">
+                    <Settings2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <span className="font-display text-sm font-semibold text-foreground">
+                  {Math.round(swimProgressPct)}%
+                  {swimTotalYards < swimYardsGoal && <span className="text-xs font-normal text-muted-foreground ml-2">{swimYardsGoal - swimTotalYards} yd to go</span>}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-border overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${swimProgressPct}%`,
+                    background: swimGoalAchieved ? "oklch(0.68 0.18 145)" : "linear-gradient(90deg, oklch(0.65 0.22 220), oklch(0.72 0.22 200))",
+                    boxShadow: swimGoalAchieved ? "0 0 12px oklch(0.68 0.18 145 / 0.5)" : "0 0 12px oklch(0.65 0.22 220 / 0.4)",
+                  }} />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -963,6 +1150,251 @@ function Tracker() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
 
           {/* ── Left: Current Session ── */}
+          {currentSport === "swim" ? (
+            <div className="space-y-5">
+              {/* Swim session header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Waves className="w-4 h-4 text-cyan-400" />
+                  <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Today's Swim</h2>
+                  <span className="text-xs text-muted-foreground">{swimTodayLabel}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {swimSets.length > 0 && (
+                    <button onClick={() => swimResetMutation.mutate()}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
+                      <RotateCcw className="w-3 h-3" /> Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Swim stats row */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Total Yards", value: swimTotalYards, suffix: "yards", icon: <MapPin className="w-4 h-4" />, color: "text-foreground" },
+                  { label: "Blocks", value: swimSets.length, suffix: "blocks", icon: <BarChart3 className="w-4 h-4" />, color: "text-cyan-400" },
+                  {
+                    label: "Avg Pace",
+                    value: 0,
+                    suffix: (() => {
+                      const timedBlocks = swimSets.filter(s => s.swimTimeSeconds && s.distanceYards && s.repCount);
+                      if (timedBlocks.length === 0) return "—";
+                      const totalSecs = timedBlocks.reduce((sum, s) => sum + (s.swimTimeSeconds ?? 0) * (s.repCount ?? 1), 0);
+                      const totalYds = timedBlocks.reduce((sum, s) => sum + (s.distanceYards ?? 0) * (s.repCount ?? 1), 0);
+                      if (totalYds === 0) return "—";
+                      return calcPace(totalSecs, totalYds, 1) + " avg";
+                    })(),
+                    icon: <Clock className="w-4 h-4" />,
+                    color: "text-foreground",
+                    hideValue: true,
+                  },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-lg border border-border bg-card p-4">
+                    <div className="flex items-center gap-1.5 text-muted-foreground mb-2">
+                      {stat.icon}
+                      <span className="text-xs font-medium uppercase tracking-wider">{stat.label}</span>
+                    </div>
+                    {(stat as any).hideValue ? (
+                      <div className="font-display text-2xl font-bold text-foreground leading-none">{stat.suffix}</div>
+                    ) : (
+                      <>
+                        <div className={`font-display text-3xl font-bold ${stat.color} leading-none`}>
+                          <AnimatedNumber value={stat.value} />
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">{stat.suffix}</div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Log a Block form */}
+              <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+                <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">Log a Block</h3>
+
+                {/* Distance presets */}
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">Distance (yards)</label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {["25", "50", "100", "200", "300"].map((d) => (
+                      <button key={d} onClick={() => setSwimDistInput(d)}
+                        className={`px-3 py-1.5 rounded text-xs font-display font-semibold transition-colors ${
+                          swimDistInput === d ? "bg-primary text-primary-foreground" : "bg-border text-muted-foreground hover:text-foreground"
+                        }`}>{d}</button>
+                    ))}
+                    <Input
+                      type="number" placeholder="Custom" value={["25","50","100","200","300"].includes(swimDistInput) ? "" : swimDistInput}
+                      onChange={(e) => setSwimDistInput(e.target.value)}
+                      className="w-20 h-8 bg-input border-border text-foreground font-display text-sm placeholder:text-muted-foreground/50"
+                      min="1" />
+                  </div>
+                </div>
+
+                {/* Reps + Time + Interval row */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium block mb-1.5">Reps</label>
+                    <Input type="number" placeholder="e.g. 12" value={swimRepsInput}
+                      onChange={(e) => setSwimRepsInput(e.target.value)}
+                      className="bg-input border-border text-foreground font-display text-lg h-11 placeholder:text-muted-foreground/50"
+                      min="1" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium block mb-1.5">Swim Time (m:ss)</label>
+                    <Input type="text" placeholder="e.g. 0:20" value={swimTimeInput}
+                      onChange={(e) => setSwimTimeInput(e.target.value)}
+                      className="bg-input border-border text-foreground font-display text-lg h-11 placeholder:text-muted-foreground/50" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground font-medium block mb-1.5">Interval (m:ss)</label>
+                    <Input type="text" placeholder="e.g. 0:40" value={swimIntervalInput}
+                      onChange={(e) => setSwimIntervalInput(e.target.value)}
+                      className="bg-input border-border text-foreground font-display text-lg h-11 placeholder:text-muted-foreground/50" />
+                  </div>
+                </div>
+
+                {/* Stroke selector */}
+                <div>
+                  <label className="text-xs text-muted-foreground font-medium block mb-1.5">Stroke</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["freestyle", "breaststroke", "backstroke", "butterfly", "mixed"] as const).map((s) => (
+                      <button key={s} onClick={() => setSwimStroke(s)}
+                        className={`px-3 py-1.5 rounded text-xs font-display font-semibold capitalize transition-colors ${
+                          swimStroke === s ? "bg-primary text-primary-foreground" : "bg-border text-muted-foreground hover:text-foreground"
+                        }`}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Warmup / Cooldown toggles + Add button */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button onClick={() => { setSwimIsWarmup(v => !v); if (!swimIsWarmup) setSwimIsCooldown(false); }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-display font-semibold transition-colors ${
+                      swimIsWarmup ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-border text-muted-foreground hover:text-foreground"
+                    }`}>
+                    <Droplets className="w-3.5 h-3.5" /> Warm-up
+                  </button>
+                  <button onClick={() => { setSwimIsCooldown(v => !v); if (!swimIsCooldown) setSwimIsWarmup(false); }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-display font-semibold transition-colors ${
+                      swimIsCooldown ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-border text-muted-foreground hover:text-foreground"
+                    }`}>
+                    <Droplets className="w-3.5 h-3.5" /> Cool-down
+                  </button>
+                  <div className="flex-1" />
+                  {swimDistInput && swimRepsInput && (
+                    <span className="text-xs text-muted-foreground">
+                      {parseInt(swimRepsInput, 10) > 1 ? `${swimRepsInput} × ${swimDistInput}` : swimDistInput} yd
+                      {swimIntervalInput ? ` on ${swimIntervalInput}` : ""}
+                      {swimTimeInput ? ` — ${swimTimeInput}` : ""}
+                    </span>
+                  )}
+                  <Button onClick={handleAddBlock} disabled={addBlockMutation.isPending}
+                    className="h-11 px-5 bg-primary text-primary-foreground font-display font-semibold uppercase tracking-wide hover:bg-primary/90 active:scale-[0.96] transition-all duration-150 disabled:opacity-70">
+                    {addBlockMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4 mr-1.5" />Add Block</>}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Block list */}
+              {swimTodayLoading ? (
+                <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-400 animate-spin" /></div>
+              ) : swimSets.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wide">Blocks Logged</h3>
+                    <span className="text-xs text-muted-foreground">{swimSets.length} total · {swimTotalYards} yards</span>
+                  </div>
+                  {swimSets.map((block, i) => {
+                    const blockYards = (block.distanceYards ?? 0) * (block.repCount ?? 1);
+                    const pace = block.swimTimeSeconds && block.distanceYards && block.repCount
+                      ? calcPace(block.swimTimeSeconds * (block.repCount ?? 1), block.distanceYards ?? 0, block.repCount ?? 1)
+                      : null;
+                    return (
+                      <div key={block.id}
+                        className={`rounded-lg border bg-card p-3 flex items-center gap-3 ${
+                          block.isWarmup ? "border-blue-500/30" : block.isCooldown ? "border-purple-500/30" : "border-border"
+                        }`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-display text-sm font-bold text-foreground">
+                              {block.repCount && block.repCount > 1 ? `${block.repCount} × ${block.distanceYards}` : block.distanceYards} yd
+                            </span>
+                            {block.intervalSeconds && (
+                              <span className="text-xs text-muted-foreground">on {formatSeconds(block.intervalSeconds)}</span>
+                            )}
+                            {block.swimTimeSeconds && (
+                              <span className="text-xs text-muted-foreground">— {formatSeconds(block.swimTimeSeconds * (block.repCount ?? 1))} total</span>
+                            )}
+                            {block.stroke && block.stroke !== "freestyle" && (
+                              <Badge className="text-xs py-0 px-1.5 capitalize bg-border/50 text-muted-foreground border-0">{block.stroke}</Badge>
+                            )}
+                            {block.isWarmup && <Badge className="text-xs py-0 px-1.5 bg-blue-500/20 text-blue-400 border-blue-500/30">Warm-up</Badge>}
+                            {block.isCooldown && <Badge className="text-xs py-0 px-1.5 bg-purple-500/20 text-purple-400 border-purple-500/30">Cool-down</Badge>}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="font-display text-xs text-cyan-400 font-semibold">{blockYards} yd</span>
+                            {pace && <span className="text-xs text-muted-foreground">{pace}</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => deleteBlockMutation.mutate({ setId: block.id, swimYardsGoal })}
+                          className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-8 text-center">
+                  <Waves className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">No blocks logged yet.</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Enter a distance and reps above to get started.</p>
+                </div>
+              )}
+
+              {/* Pool Settings Modal */}
+              {showSwimSettings && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowSwimSettings(false)}>
+                  <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                  <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-6 space-y-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Pool Settings</h2>
+                      <button onClick={() => setShowSwimSettings(false)} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs text-muted-foreground font-medium block mb-1.5 uppercase tracking-wide">Pool Length</label>
+                        <div className="flex gap-2">
+                          {(["25yd", "25m", "50m"] as const).map((opt) => (
+                            <button key={opt} onClick={() => setPoolLengthInput(opt)}
+                              className={`flex-1 py-2 rounded text-xs font-display font-semibold uppercase tracking-wide transition-colors ${
+                                poolLengthInput === opt ? "bg-primary text-primary-foreground" : "bg-border text-muted-foreground hover:text-foreground"
+                              }`}>{opt}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground font-medium block mb-1.5 uppercase tracking-wide">Daily Yardage Goal</label>
+                        <Input type="number" value={swimGoalInput} onChange={(e) => setSwimGoalInput(e.target.value)}
+                          className="bg-input border-border text-foreground font-display h-10" min="100" step="100" />
+                        <p className="text-xs text-muted-foreground/60 mt-1">Recommended: 1500–2000 yards per session.</p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        updateSwimSettingsMutation.mutate({ poolLength: poolLengthInput, swimYardsGoal: parseInt(swimGoalInput, 10) || 1500 });
+                        setShowSwimSettings(false);
+                      }}
+                      disabled={updateSwimSettingsMutation.isPending}
+                      className="w-full font-display font-semibold uppercase tracking-wide bg-primary text-primary-foreground hover:bg-primary/90">
+                      {updateSwimSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-2" />Save Settings</>}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -976,7 +1408,7 @@ function Tracker() {
                     workoutStart={sets[0]?.createdAt ? new Date(sets[0].createdAt) : undefined}
                     workoutEnd={sets[sets.length - 1]?.createdAt ? new Date(sets[sets.length - 1].createdAt) : undefined}
                     totalVolumeLbs={totalVolume}
-                    maxWeightLbs={Math.max(...sets.map(s => s.weight))}
+                    maxWeightLbs={Math.max(...sets.map(s => s.weight ?? 0))}
                     onSave={() => toast.success("Saved to Apple Health")}
                   />
                 )}
@@ -1095,9 +1527,9 @@ function Tracker() {
                   <SetCard
                     key={set.id}
                     id={set.id}
-                    weight={set.weight}
-                    reps={set.reps}
-                    volume={set.volume}
+                    weight={set.weight ?? 0}
+                    reps={set.reps ?? 0}
+                    volume={set.volume ?? 0}
                     index={i}
                     onDelete={() => deleteSetMutation.mutate({ setId: set.id })}
                     onEdit={(w, r) => editSetMutation.mutate({ setId: set.id, weight: w, reps: r })}
@@ -1123,9 +1555,90 @@ function Tracker() {
               </Button>
             )}
           </div>
+          )}
 
           {/* ── Right: Chart + Templates + Session History ── */}
           <div className="space-y-5">
+            {currentSport === "swim" ? (
+              <>
+                {/* Swim Yardage Chart */}
+                {(swimSessions ?? []).length > 0 && (
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Waves className="w-4 h-4 text-cyan-400" />
+                      <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">Yards per Session</h3>
+                    </div>
+                    <ChartContainer config={{ yards: { label: "Yards", color: "oklch(0.65 0.22 220)" } }} className="h-40 w-full">
+                      <BarChart data={(swimSessions ?? []).slice(-7).map(s => ({ label: s.label ?? s.date, yards: s.totalYards ?? 0 }))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0 0)" />
+                        <XAxis dataKey="label" tick={{ fill: "oklch(0.6 0 0)", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "oklch(0.6 0 0)", fontSize: 10 }} />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Bar dataKey="yards" radius={[3, 3, 0, 0]}>
+                          {(swimSessions ?? []).slice(-7).map((_, i) => (
+                            <Cell key={i} fill={i === (swimSessions ?? []).slice(-7).length - 1 ? "oklch(0.65 0.22 220)" : "oklch(0.45 0.15 220)"} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ChartContainer>
+                  </div>
+                )}
+
+                {/* Swim Leaderboard */}
+                <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-cyan-400" />
+                    <h3 className="font-display text-sm font-semibold text-foreground uppercase tracking-wide">Today's Swim Leaderboard</h3>
+                  </div>
+                  {(swimLeaderboard ?? []).length === 0 ? (
+                    <div className="text-xs text-muted-foreground/60 italic">No swim sessions logged today yet.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {(swimLeaderboard ?? []).map((entry, i) => (
+                        <div key={entry.userId} className="flex items-center gap-2">
+                          <span className={`font-display text-sm font-bold w-5 text-center ${
+                            i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-300" : i === 2 ? "text-amber-600" : "text-muted-foreground"
+                          }`}>{i + 1}</span>
+                          <span className="flex-1 text-sm text-foreground truncate">{entry.displayName ?? "Anonymous"}</span>
+                          <span className="font-display text-sm font-semibold text-cyan-400">{(entry.totalYards ?? 0).toLocaleString()} yd</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Swim Session History */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Swim History</h2>
+                </div>
+                {swimSessionsLoading ? (
+                  <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 text-cyan-400 animate-spin" /></div>
+                ) : (swimSessions ?? []).length > 0 ? (
+                  <div className="space-y-3">
+                    {(swimSessions ?? []).slice().sort((a, b) => b.date.localeCompare(a.date)).map((session) => (
+                      <div key={session.id} className="rounded-lg border border-border bg-card/50 p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-display text-sm font-semibold text-foreground">{session.label ?? session.date}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-display text-sm font-bold text-cyan-400">{(session.totalYards ?? 0).toLocaleString()} yd</span>
+                            {session.completed && <Badge className="text-xs py-0 px-1.5 bg-green-500/20 text-green-400 border-green-500/30">✓ Goal</Badge>}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">{session.sets.length} blocks</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                    <Waves className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">No swim sessions yet.</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Log your first swim above.</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
             {/* Weekly Volume Chart */}
             {(allSessions ?? []).length > 0 && (
               <WeeklyChart sessions={allSessions ?? []} />
@@ -1328,7 +1841,7 @@ function Tracker() {
             <SessionHistoryCard
               label={todayLabel} totalReps={totalReps} totalVolume={totalVolume}
               goal={REP_GOAL} completed={goalAchieved}
-              sets={sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
+              sets={sets.filter(s => s.weight != null && s.reps != null && s.volume != null).map((s) => ({ weight: s.weight!, reps: s.reps!, volume: s.volume! }))}
               isActive={true}
               compareReps={compareSession?.totalReps ?? null}
               compareVolume={compareSession?.totalVolume ?? null}
@@ -1345,7 +1858,7 @@ function Tracker() {
                     key={session.date}
                     label={session.label} totalReps={session.totalReps} totalVolume={session.totalVolume}
                     goal={session.goal} completed={session.completed}
-                    sets={session.sets.map((s) => ({ weight: s.weight, reps: s.reps, volume: s.volume }))}
+                    sets={session.sets.filter(s => s.weight != null && s.reps != null && s.volume != null).map((s) => ({ weight: s.weight!, reps: s.reps!, volume: s.volume! }))}
                     isActive={false}
                     compareReps={i < pastSessions.length - 1 ? pastSessions[i + 1].totalReps : null}
                     compareVolume={i < pastSessions.length - 1 ? pastSessions[i + 1].totalVolume : null}
@@ -1358,6 +1871,8 @@ function Tracker() {
                 <p className="text-sm text-muted-foreground">No past sessions yet.</p>
                 <p className="text-xs text-muted-foreground/60 mt-1">Come back later this week to compare sessions.</p>
               </div>
+            )}
+              </>
             )}
           </div>
         </div>

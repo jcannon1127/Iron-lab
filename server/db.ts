@@ -339,8 +339,11 @@ export async function recomputePRsForUser(userId: number): Promise<void> {
       .where(eq(workoutSets.sessionId, session.id));
 
     for (const s of sets) {
-      await checkAndUpdatePR(userId, "maxWeight", s.weight, session.date, s.id);
-      await checkAndUpdatePR(userId, "bestRepsAtWeight", s.reps, session.date, s.id, s.weight);
+      // Only compute bench press PRs for bench_press sets
+      if (s.sport === "bench_press" && s.weight != null && s.reps != null) {
+        await checkAndUpdatePR(userId, "maxWeight", s.weight, session.date, s.id);
+        await checkAndUpdatePR(userId, "bestRepsAtWeight", s.reps, session.date, s.id, s.weight);
+      }
     }
 
     if (session.totalVolume > 0) {
@@ -453,4 +456,82 @@ export async function deleteUser(userId: number): Promise<void> {
   if (!db) throw new Error("Database not available");
   // All related rows cascade-delete via FK constraints (sessions, sets, templates, profile, PRs, tokens)
   await db.delete(users).where(eq(users.id, userId));
+}
+
+// ─── Swimming helpers ─────────────────────────────────────────────────────────
+
+export async function getSessionsByDateAndSport(
+  userId: number,
+  date: string,
+  sport: "bench_press" | "swimming"
+): Promise<WorkoutSession | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(workoutSessions)
+    .where(
+      and(
+        eq(workoutSessions.userId, userId),
+        eq(workoutSessions.date, date),
+        eq(workoutSessions.sport, sport)
+      )
+    )
+    .limit(1);
+  return result[0];
+}
+
+export async function updateSwimSessionTotals(
+  sessionId: number,
+  totalYards: number,
+  swimYardsGoal: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(workoutSessions)
+    .set({
+      totalYards,
+      completed: totalYards >= swimYardsGoal,
+      updatedAt: new Date(),
+    })
+    .where(eq(workoutSessions.id, sessionId));
+}
+
+export async function updatePoolLengthAndGoal(
+  userId: number,
+  poolLength: "25yd" | "25m" | "50m",
+  swimYardsGoal: number
+): Promise<UserProfile> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const result = await db
+    .insert(userProfiles)
+    .values({ userId, poolLength, swimYardsGoal, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: userProfiles.userId,
+      set: { poolLength, swimYardsGoal, updatedAt: new Date() },
+    })
+    .returning();
+  return result[0]!;
+}
+
+export async function getSwimLeaderboard(date: string): Promise<
+  { userId: number; displayName: string | null; totalYards: number | null }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      userId: workoutSessions.userId,
+      displayName: userProfiles.displayName,
+      totalYards: workoutSessions.totalYards,
+    })
+    .from(workoutSessions)
+    .innerJoin(
+      userProfiles,
+      and(eq(userProfiles.userId, workoutSessions.userId), eq(userProfiles.leaderboardOptIn, true))
+    )
+    .where(and(eq(workoutSessions.date, date), eq(workoutSessions.sport, "swimming")))
+    .orderBy(desc(workoutSessions.totalYards));
 }

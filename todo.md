@@ -114,3 +114,25 @@
 - [x] App Review test account created: review@ironlab.thisisus.ai / AppReview2026!
 - [x] Vultr database connection fixed (iptables rule + correct gateway IP 172.19.0.1)
 - [x] JEFF: Complete App Store Connect setup and submit for review (all assets ready — see ironlab-appstore-listing.md and ironlab-xcode-guide.md)
+
+## Swimming Feature
+
+- [x] DB schema: add `sport` column to workout_sessions (varchar, default 'bench')
+- [x] DB schema: add `total_yards` column to workout_sessions
+- [x] DB schema: add swim-specific columns to workout_sets (distance_yards, rep_count, swim_time_seconds, interval_seconds, stroke, is_warmup, is_cooldown)
+- [x] DB schema: add `pool_length` and `swim_yards_goal` to user_profiles
+- [x] Backend: swim helpers in db.ts (addSwimBlock, getSwimTodaySession, getSwimSessions, getSwimLeaderboard, deleteSwimBlock, resetSwimToday)
+- [x] Backend: swim tRPC router (getTodaySession, getSessions, addBlock, deleteBlock, resetToday, leaderboard)
+- [x] Backend: profile.updateSwimSettings procedure
+- [x] UI: sport selector toggle in header (Bench / Swim pill buttons)
+- [x] UI: header title and icon change based on current sport
+- [x] UI: swim progress bar (yards vs goal, cyan gradient)
+- [x] UI: swimming session panel — stats row, log a block form with distance presets, reps, swim time, interval, stroke selector, warm-up/cool-down toggles
+- [x] UI: block list with delete buttons, warm-up/cool-down color coding
+- [x] UI: pace display per 100 yd auto-calculated from swim time
+- [x] UI: pool settings modal (pool length + yardage goal)
+- [x] UI: swim yardage chart (bar chart of yards per session)
+- [x] UI: swim leaderboard (today's rankings by total yards)
+- [x] UI: swim session history panel
+- [ ] HealthKit: update IronLabHealthPlugin.swift to write .swimming activity type
+- [ ] Deploy to Vultr with swimming feature

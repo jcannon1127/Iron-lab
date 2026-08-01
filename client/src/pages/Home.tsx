@@ -755,14 +755,17 @@ function Tracker() {
 
   // Parse time string "m:ss" or "ss" to seconds
   const parseTimeInput = (s: string): number | undefined => {
-    if (!s.trim()) return undefined;
-    const parts = s.split(":");
+    const trimmed = s.trim();
+    if (!trimmed) return undefined;
+    const parts = trimmed.split(":");
     if (parts.length === 2) {
-      const m = parseInt(parts[0], 10);
+      // Handle ":40" (bare seconds like ":40") — treat empty left side as 0 minutes
+      const m = parts[0] === "" ? 0 : parseInt(parts[0], 10);
       const sec = parseInt(parts[1], 10);
       if (!isNaN(m) && !isNaN(sec)) return m * 60 + sec;
     }
-    const sec = parseInt(s, 10);
+    // Plain number — treat as seconds
+    const sec = parseInt(trimmed, 10);
     return isNaN(sec) ? undefined : sec;
   };
 

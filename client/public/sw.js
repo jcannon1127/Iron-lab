@@ -1,55 +1,45 @@
 /**
  * Iron Lab — Service Worker
- * Provides offline shell caching and background sync for PWA.
+ * Network-first strategy: always tries network, falls back to cache.
+ * Bumping CACHE_VERSION forces all clients to update immediately.
  */
-const CACHE_NAME = "ironlab-v1";
-const STATIC_ASSETS = ["/", "/login", "/manifest.json"];
+const CACHE_VERSION = "ironlab-v8";
 
-// Install: cache static shell
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+// Install: skip waiting immediately so new SW takes over right away
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
-// Activate: clean up old caches
+// Activate: delete ALL old caches and claim all clients immediately
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+      Promise.all(keys.map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch: network-first for API, cache-first for static assets
+// Fetch: network-first for everything
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Always go to network for API calls
+  // Always bypass SW for API calls
   if (url.pathname.startsWith("/api/")) return;
 
-  // For navigation requests, try network then fall back to cached shell
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match("/").then((r) => r ?? fetch(event.request))
-      )
-    );
-    return;
-  }
-
-  // For other requests: stale-while-revalidate
+  // Network-first: try network, fall back to cache
   event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(event.request);
-      const networkFetch = fetch(event.request).then((response) => {
-        if (response.ok) cache.put(event.request, response.clone());
+    fetch(event.request)
+      .then((response) => {
+        // Cache successful GET responses
+        if (response.ok && event.request.method === "GET") {
+          const clone = response.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+        }
         return response;
-      });
-      return cached ?? networkFetch;
-    })
+      })
+      .catch(() =>
+        caches.match(event.request).then((cached) => cached ?? fetch(event.request))
+      )
   );
 });
 

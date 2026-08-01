@@ -535,3 +535,11 @@ export async function getSwimLeaderboard(date: string): Promise<
     .where(and(eq(workoutSessions.date, date), eq(workoutSessions.sport, "swimming")))
     .orderBy(desc(workoutSessions.totalYards));
 }
+
+export async function markSwimSessionComplete(sessionId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(workoutSessions)
+    .set({ completed: true, updatedAt: new Date() })
+    .where(eq(workoutSessions.id, sessionId));
+}

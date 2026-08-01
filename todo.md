@@ -136,3 +136,4 @@
 - [x] UI: swim session history panel
 - [ ] HealthKit: update IronLabHealthPlugin.swift to write .swimming activity type
 - [x] Deploy to Vultr with swimming feature
+- [x] Add "Complete Session" button to swim panel to mark session as done with trophy badge in history

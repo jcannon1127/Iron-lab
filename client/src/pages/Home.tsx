@@ -733,6 +733,14 @@ function Tracker() {
     onSuccess: () => { utils.profile.get.invalidate(); toast.success("Swim settings saved!"); },
     onError: (e) => toast.error(e.message),
   });
+  const completeSessionMutation = trpc.swim.completeSession.useMutation({
+    onSuccess: () => {
+      utils.swim.getTodaySession.invalidate();
+      utils.swim.getSessions.invalidate();
+      toast.success("🏆 Session completed!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   // ── Swim UI state ─────────────────────────────────────────────────────────────
   const [swimDistInput, setSwimDistInput] = useState("25");
@@ -1353,6 +1361,22 @@ function Tracker() {
                   <Waves className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">No blocks logged yet.</p>
                   <p className="text-xs text-muted-foreground/60 mt-1">Enter a distance and reps above to get started.</p>
+                </div>
+              )}
+
+              {/* Complete Session Button */}
+              {swimSets.length > 0 && !swimGoalAchieved && (
+                <button
+                  onClick={() => completeSessionMutation.mutate()}
+                  disabled={completeSessionMutation.isPending}
+                  className="w-full py-3 rounded-lg font-display font-semibold text-sm uppercase tracking-widest transition-all active:scale-[0.97] bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30 disabled:opacity-50"
+                >
+                  {completeSessionMutation.isPending ? "Saving..." : "✓ Complete Session"}
+                </button>
+              )}
+              {swimGoalAchieved && swimSets.length > 0 && (
+                <div className="flex items-center justify-center gap-2 py-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm font-display font-semibold uppercase tracking-widest">
+                  <span>🏆</span> Session Complete
                 </div>
               )}
 

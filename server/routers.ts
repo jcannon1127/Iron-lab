@@ -26,6 +26,7 @@ import {
   deleteUser,
   getSessionsByDateAndSport,
   updateSwimSessionTotals,
+  markSwimSessionComplete,
   updatePoolLengthAndGoal,
   getSwimLeaderboard,
 } from "./db";
@@ -364,6 +365,15 @@ export const appRouter = router({
         })
       );
       return withSets;
+    }),
+
+    /** Mark today's swim session as complete */
+    completeSession: protectedProcedure.mutation(async ({ ctx }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
+      if (!session) throw new Error("No swim session found for today");
+      await markSwimSessionComplete(session.id);
+      return { success: true };
     }),
 
     /** Daily swim leaderboard */

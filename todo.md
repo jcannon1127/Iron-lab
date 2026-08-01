@@ -135,4 +135,4 @@
 - [x] UI: swim leaderboard (today's rankings by total yards)
 - [x] UI: swim session history panel
 - [ ] HealthKit: update IronLabHealthPlugin.swift to write .swimming activity type
-- [ ] Deploy to Vultr with swimming feature
+- [x] Deploy to Vultr with swimming feature

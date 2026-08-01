@@ -791,8 +791,8 @@ function Tracker() {
     addBlockMutation.mutate({
       distanceYards: dist,
       repCount: reps,
-      swimTimeSeconds: swimTimeSecs,
-      intervalSeconds: intervalSecs,
+      ...(swimTimeSecs !== undefined ? { swimTimeSeconds: swimTimeSecs } : {}),
+      ...(intervalSecs !== undefined ? { intervalSeconds: intervalSecs } : {}),
       stroke: swimStroke,
       isWarmup: swimIsWarmup,
       isCooldown: swimIsCooldown,

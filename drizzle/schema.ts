@@ -69,9 +69,9 @@ export const workoutSets = pgTable("workout_sets", {
   weight: real("weight"),
   reps: integer("reps"),
   volume: real("volume"),
-  performedAt: bigint("performedAt", { mode: "number" }).notNull().default(0),
+  performedAt: bigint("performedAt", { mode: "number" }).default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  setNumber: integer("setNumber").notNull().default(0),
+  setNumber: integer("setNumber").default(0),
   // Swimming additions
   sport: sportEnum("sport").notNull().default("bench_press"),
   distanceYards: integer("distanceYards"),

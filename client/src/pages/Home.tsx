@@ -707,12 +707,21 @@ function Tracker() {
   // ── Sport selector ──────────────────────────────────────────────────────────
   const [currentSport, setCurrentSport] = useState<"bench" | "swim">("bench");
 
+  // ── Date state (must be before queries) ─────────────────────────────────────
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [swimSessionDate, setSwimSessionDate] = useState(todayStr);
+  const [benchSessionDate, setBenchSessionDate] = useState(todayStr);
+
   // ── Bench press queries ──────────────────────────────────────────────────────
-  const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(undefined);
+  const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(
+    benchSessionDate !== todayStr ? { date: benchSessionDate } : undefined
+  );
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
 
   // ── Swim queries ─────────────────────────────────────────────────────────────
-  const { data: swimTodayData, isLoading: swimTodayLoading } = trpc.swim.getTodaySession.useQuery(undefined);
+  const { data: swimTodayData, isLoading: swimTodayLoading } = trpc.swim.getTodaySession.useQuery(
+    swimSessionDate !== todayStr ? { date: swimSessionDate } : undefined
+  );
   const { data: swimSessions, isLoading: swimSessionsLoading } = trpc.swim.getSessions.useQuery(undefined);
   const { data: swimLeaderboard } = trpc.swim.leaderboard.useQuery({ date: new Date().toISOString().slice(0, 10) });
 
@@ -808,6 +817,7 @@ function Tracker() {
       isWarmup: swimIsWarmup,
       isCooldown: swimIsCooldown,
       swimYardsGoal,
+      ...(swimSessionDate !== todayStr ? { date: swimSessionDate } : {}),
     }, {
       onSuccess: (data) => {
         toast.success(`+${data.blockYards} yards logged!`);
@@ -964,7 +974,7 @@ function Tracker() {
     const reps = parseInt(repsInput, 10);
     if (!weight || weight <= 0 || isNaN(weight)) { toast.error("Enter a valid weight"); weightRef.current?.focus(); return; }
     if (!reps || reps <= 0 || isNaN(reps)) { toast.error("Enter valid reps"); return; }
-    addSetMutation.mutate({ weight, reps }, {
+    addSetMutation.mutate({ weight, reps, ...(benchSessionDate !== todayStr ? { date: benchSessionDate } : {}) }, {
       onSuccess: (data) => {
         setNewSetId(data?.set?.id ?? null);
         setTimeout(() => setNewSetId(null), 600);
@@ -1167,11 +1177,19 @@ function Tracker() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Waves className="w-4 h-4 text-cyan-400" />
-                  <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Today's Swim</h2>
-                  <span className="text-xs text-muted-foreground">{swimTodayLabel}</span>
+                  <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">
+                    {swimSessionDate === todayStr ? "Today's Swim" : "Swim Session"}
+                  </h2>
                 </div>
                 <div className="flex items-center gap-3">
-                  {swimSets.length > 0 && (
+                  <input
+                    type="date"
+                    value={swimSessionDate}
+                    max={todayStr}
+                    onChange={e => setSwimSessionDate(e.target.value)}
+                    className="text-xs bg-transparent border border-border rounded px-2 py-1 text-muted-foreground focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  />
+                  {swimSets.length > 0 && swimSessionDate === todayStr && (
                     <button onClick={() => swimResetMutation.mutate()}
                       className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
                       <RotateCcw className="w-3 h-3" /> Reset
@@ -1426,10 +1444,18 @@ function Tracker() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-primary" />
-                <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">Today's Session</h2>
-                <span className="text-xs text-muted-foreground">{todayLabel}</span>
+                <h2 className="font-display text-lg font-semibold text-foreground uppercase tracking-wide">
+                  {benchSessionDate === todayStr ? "Today's Session" : "Past Session"}
+                </h2>
               </div>
               <div className="flex items-center gap-3">
+                <input
+                  type="date"
+                  value={benchSessionDate}
+                  max={todayStr}
+                  onChange={e => setBenchSessionDate(e.target.value)}
+                  className="text-xs bg-transparent border border-border rounded px-2 py-1 text-muted-foreground focus:outline-none focus:border-primary cursor-pointer"
+                />
                 {setCount > 0 && (
                   <HealthKitSaveButton
                     workoutStart={sets[0]?.createdAt ? new Date(sets[0].createdAt) : undefined}
@@ -1649,7 +1675,8 @@ function Tracker() {
                           <span className="font-display text-sm font-semibold text-foreground">{session.label ?? session.date}</span>
                           <div className="flex items-center gap-2">
                             <span className="font-display text-sm font-bold text-cyan-400">{(session.totalYards ?? 0).toLocaleString()} yd</span>
-                            {session.completed && <Badge className="text-xs py-0 px-1.5 bg-green-500/20 text-green-400 border-green-500/30">✓ Goal</Badge>}
+                            {(session.totalYards ?? 0) >= (session.swimYardsGoal ?? 1500) && <Badge className="text-xs py-0 px-1.5 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">🏆 Goal</Badge>}
+                            {session.completed && (session.totalYards ?? 0) < (session.swimYardsGoal ?? 1500) && <Badge className="text-xs py-0 px-1.5 bg-green-500/20 text-green-400 border-green-500/30">✓ Done</Badge>}
                           </div>
                         </div>
                         <div className="text-xs text-muted-foreground">{session.sets.length} blocks</div>

@@ -492,6 +492,7 @@ export async function updateSwimSessionTotals(
     .update(workoutSessions)
     .set({
       totalYards,
+      swimYardsGoal,
       completed: totalYards >= swimYardsGoal,
       updatedAt: new Date(),
     })

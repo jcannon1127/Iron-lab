@@ -55,6 +55,7 @@ export const workoutSessions = pgTable("workout_sessions", {
   // Swimming additions
   sport: sportEnum("sport").notNull().default("bench_press"),
   totalYards: integer("totalYards").default(0),
+  swimYardsGoal: integer("swimYardsGoal").notNull().default(1500),
 });
 
 export type WorkoutSession = typeof workoutSessions.$inferSelect;

@@ -70,29 +70,38 @@ export const appRouter = router({
     }),
 
     /** Get or create today's session */
-    getTodaySession: protectedProcedure.query(async ({ ctx }) => {
-      const today = new Date().toISOString().slice(0, 10);
-      let session = await getSessionByDate(ctx.user.id, today);
-      if (!session) {
-        session = await createSession({
-          userId: ctx.user.id,
-          date: today,
-          label: formatDateLabel(today),
-          goal: REP_GOAL,
-          totalReps: 0,
-          totalVolume: 0,
-          completed: false,
-        });
-      }
-      const sets = await getSessionSets(session.id);
-      return { ...session, sets };
-    }),
+    getTodaySession: protectedProcedure
+      .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const today = input?.date ?? new Date().toISOString().slice(0, 10);
+        const isToday = today === new Date().toISOString().slice(0, 10);
+        let session = await getSessionByDate(ctx.user.id, today);
+        // Only auto-create session for today, not for past dates
+        if (!session && isToday) {
+          session = await createSession({
+            userId: ctx.user.id,
+            date: today,
+            label: formatDateLabel(today),
+            goal: REP_GOAL,
+            totalReps: 0,
+            totalVolume: 0,
+            completed: false,
+          });
+        }
+        if (!session) return { id: 0, date: today, label: formatDateLabel(today), goal: REP_GOAL, totalReps: 0, totalVolume: 0, completed: false, sets: [], userId: ctx.user.id, createdAt: new Date(), updatedAt: new Date(), sport: 'bench_press' as const, totalYards: 0, swimYardsGoal: 1500 };
+        const sets = await getSessionSets(session.id);
+        return { ...session, sets };
+      }),
 
     /** Add a set to today's session */
     addSet: protectedProcedure
-      .input(z.object({ weight: z.number().positive(), reps: z.number().int().positive() }))
+      .input(z.object({
+        weight: z.number().positive(),
+        reps: z.number().int().positive(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = input.date ?? new Date().toISOString().slice(0, 10);
         let session = await getSessionByDate(ctx.user.id, today);
         if (!session) {
           session = await createSession({
@@ -263,26 +272,31 @@ export const appRouter = router({
   }),
 
   swim: router({
-    /** Get or create today's swim session */
-    getTodaySession: protectedProcedure.query(async ({ ctx }) => {
-      const today = new Date().toISOString().slice(0, 10);
-      let session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
-      if (!session) {
-        session = await createSession({
-          userId: ctx.user.id,
-          date: today,
-          label: formatDateLabel(today),
-          goal: 0,
-          totalReps: 0,
-          totalVolume: 0,
-          completed: false,
-          sport: "swimming",
-          totalYards: 0,
-        });
-      }
-      const sets = await getSessionSets(session.id);
-      return { ...session, sets };
-    }),
+    /** Get or create today's swim session (or load a past date's session) */
+    getTodaySession: protectedProcedure
+      .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const today = input?.date ?? new Date().toISOString().slice(0, 10);
+        const isToday = today === new Date().toISOString().slice(0, 10);
+        let session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
+        // Only auto-create session for today, not for past dates
+        if (!session && isToday) {
+          session = await createSession({
+            userId: ctx.user.id,
+            date: today,
+            label: formatDateLabel(today),
+            goal: 0,
+            totalReps: 0,
+            totalVolume: 0,
+            completed: false,
+            sport: "swimming",
+            totalYards: 0,
+          });
+        }
+        if (!session) return { id: 0, date: today, label: formatDateLabel(today), goal: 0, totalReps: 0, totalVolume: 0, completed: false, sets: [], userId: ctx.user.id, createdAt: new Date(), updatedAt: new Date(), sport: 'swimming' as const, totalYards: 0, swimYardsGoal: 1500 };
+        const sets = await getSessionSets(session.id);
+        return { ...session, sets };
+      }),
 
     /** Add a swim block (e.g. 12 × 25 on 0:40) */
     addBlock: protectedProcedure
@@ -295,9 +309,10 @@ export const appRouter = router({
         isWarmup: z.boolean().default(false),
         isCooldown: z.boolean().default(false),
         swimYardsGoal: z.number().int().min(100).max(20000).default(1500),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = input.date ?? new Date().toISOString().slice(0, 10);
         let session = await getSessionsByDateAndSport(ctx.user.id, today, "swimming");
         if (!session) {
           session = await createSession({

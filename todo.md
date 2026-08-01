@@ -137,3 +137,6 @@
 - [ ] HealthKit: update IronLabHealthPlugin.swift to write .swimming activity type
 - [x] Deploy to Vultr with swimming feature
 - [x] Add "Complete Session" button to swim panel to mark session as done with trophy badge in history
+- [x] Fix goal badge bug: "✓ Goal" showing at 1400 yd when goal is 1500 yd - only mark complete when yards >= goal
+- [x] Move Jeff's Aug 1 swim session to Jul 31 in DB
+- [x] Add historical date entry: date picker on log form so users can enter past sessions (swim and bench)

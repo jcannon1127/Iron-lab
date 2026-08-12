@@ -8,6 +8,7 @@ import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -75,11 +76,13 @@ const trpcClient = trpc.createClient({
 });
 
 createRoot(document.getElementById("root")!).render(
-  <trpc.Provider client={trpcClient} queryClient={queryClient}>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </trpc.Provider>
+  <ErrorBoundary>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </trpc.Provider>
+  </ErrorBoundary>
 );
 
 // Initialize Capacitor plugins when running as a native app
@@ -91,12 +94,15 @@ if (Capacitor.isNativePlatform()) {
   SplashScreen.hide({ fadeOutDuration: 300 }).catch(() => {});
 }
 
-// Register service worker for PWA support (web only)
+// The browser version must never serve a stale HTML/JS combination. The native
+// iOS wrapper provides the installable experience, so remove the legacy web
+// service worker and every cache it created.
 if (!Capacitor.isNativePlatform() && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then((reg) => console.log("[SW] Registered:", reg.scope))
-      .catch((err) => console.warn("[SW] Registration failed:", err));
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .then(() => caches.keys())
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .catch((err) => console.warn("[Cache cleanup] Failed:", err));
   });
 }

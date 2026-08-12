@@ -140,3 +140,5 @@
 - [x] Fix goal badge bug: "✓ Goal" showing at 1400 yd when goal is 1500 yd - only mark complete when yards >= goal
 - [x] Move Jeff's Aug 1 swim session to Jul 31 in DB
 - [x] Add historical date entry: date picker on log form so users can enter past sessions (swim and bench)
+- [x] Investigate why a second user cannot access the public Iron Lab site while Jeff can
+- [x] Fix iPhone Safari blank screen by removing stale service-worker and client-cache failure paths

@@ -68,9 +68,25 @@ export function serveStatic(app: Express) {
     },
   }));
 
-  // An old build may request a removed bundle. Return a true 404 rather than
-  // returning index.html as JavaScript, which crashes the React bootstrap.
-  app.use("/assets", (_req, res) => {
+  // Safari can retain a previously loaded HTML shell longer than its scripts.
+  // Bridge the former hashed Iron Lab entry/CSS names to the stable current
+  // files once, so that old shell starts the current application rather than
+  // staying blank. Other missing assets remain explicit 404s.
+  app.use("/assets", (req, res) => {
+    const fileName = path.basename(req.path);
+    const match = /^(index|web)(?:-[A-Za-z0-9_-]+)?\.(js|css)$/.exec(fileName);
+    if (match) {
+      const replacement = path.resolve(
+        distPath,
+        "assets",
+        match[2] === "css" ? "index.css" : "index.js"
+      );
+      if (fs.existsSync(replacement)) {
+        res.setHeader("Cache-Control", "no-store, max-age=0");
+        return res.sendFile(replacement);
+      }
+    }
+
     res.status(404).type("text/plain").send("Asset not found");
   });
 

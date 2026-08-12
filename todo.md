@@ -144,4 +144,6 @@
 - [x] Fix iPhone Safari blank screen by removing stale service-worker and client-cache failure paths
 - [ ] Restore Jeff's own access after the shared-project preview sync
 - [ ] Resolve Safari-only black screen while the Manus in-app browser renders Iron Lab correctly
+- [ ] Inspect live iPhone Safari asset requests to identify why the app shell remains blank
+- [x] Add a legacy Safari bundle bridge so cached hashed entry URLs start the current app
 - [x] Compile a Safari-compatible bundle and prevent stale JavaScript asset fallbacks from returning HTML

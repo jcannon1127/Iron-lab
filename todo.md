@@ -145,5 +145,11 @@
 - [ ] Restore Jeff's own access after the shared-project preview sync
 - [ ] Resolve Safari-only black screen while the Manus in-app browser renders Iron Lab correctly
 - [ ] Inspect live iPhone Safari asset requests to identify why the app shell remains blank
+- [ ] Add a visible Safari startup diagnostic and recovery screen for bootstrap failures
+- [ ] Restore the orange-and-black Iron Lab stylesheet in Safari after module recovery
+- [x] Explicitly load the current stylesheet before Safari's dynamic module recovery
+- [x] Add a cache-bypassing Safari dynamic-import fallback for stalled module startup
+- [x] Capture Safari module-script resource failures with a document-level listener
+- [x] Add server-side capture for Safari bootstrap error diagnostics
 - [x] Add a legacy Safari bundle bridge so cached hashed entry URLs start the current app
 - [x] Compile a Safari-compatible bundle and prevent stale JavaScript asset fallbacks from returning HTML

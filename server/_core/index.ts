@@ -44,6 +44,18 @@ async function startServer() {
     res.json({ status: "ok", timestamp: Date.now() });
   });
 
+  // Browser-only startup diagnostics. This lets us diagnose a device-specific
+  // bootstrap failure without exposing any account or workout data.
+  app.post("/api/client-error", (req, res) => {
+    const body = req.body as { message?: unknown; href?: unknown; userAgent?: unknown } | undefined;
+    console.warn("[Client startup diagnostic]", {
+      message: typeof body?.message === "string" ? body.message.slice(0, 500) : "Unknown client error",
+      href: typeof body?.href === "string" ? body.href.slice(0, 500) : undefined,
+      userAgent: typeof body?.userAgent === "string" ? body.userAgent.slice(0, 500) : undefined,
+    });
+    res.status(204).end();
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

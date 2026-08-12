@@ -75,6 +75,8 @@ const trpcClient = trpc.createClient({
   ],
 });
 
+document.getElementById("ironlab-startup-status")?.remove();
+
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <trpc.Provider client={trpcClient} queryClient={queryClient}>

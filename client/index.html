@@ -13,10 +13,79 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Iron Lab" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <style>
+      #ironlab-startup-status {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        background: #111111;
+        color: #f5f5f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        text-align: center;
+      }
+      #ironlab-startup-status > div { max-width: 22rem; }
+      #ironlab-startup-status strong { display: block; font-size: 1.2rem; margin-bottom: .5rem; }
+      #ironlab-startup-status p { margin: 0; color: #b8b8b8; line-height: 1.45; }
+    </style>
+    <script>
+      (function () {
+        var reported = false;
+        function report(message) {
+          var status = document.getElementById("ironlab-startup-status");
+          if (status) {
+            status.innerHTML = "<div><strong>Iron Lab needs a moment</strong><p>" + String(message || "The app did not finish starting.").replace(/[&<>\"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[c]; }) + "</p></div>";
+          }
+          if (reported) return;
+          reported = true;
+          try {
+            navigator.sendBeacon("/api/client-error", new Blob([JSON.stringify({ message: String(message || "Unknown Safari startup error"), href: location.href, userAgent: navigator.userAgent })], { type: "application/json" }));
+          } catch (_) {}
+        }
+        window.__ironlabStartupReport = report;
+        window.addEventListener("error", function (event) { report(event.message || "A browser script could not start."); });
+        document.addEventListener("error", function (event) {
+          var target = event.target;
+          if (target && target.tagName) {
+            report("Safari could not load " + target.tagName.toLowerCase() + (target.src || target.href ? " resource: " + (target.src || target.href) : " resource."));
+          }
+        }, true);
+        window.addEventListener("unhandledrejection", function (event) { report(event.reason && event.reason.message ? event.reason.message : "A browser request failed while starting."); });
+        window.setTimeout(function () {
+          if (!document.getElementById("ironlab-startup-status")) return;
+          var status = document.getElementById("ironlab-startup-status");
+          if (status) {
+            status.innerHTML = "<div><strong>Recovering Iron Lab</strong><p>Loading a fresh copy of the app…</p></div>";
+          }
+          if (!document.getElementById("ironlab-recovery-css")) {
+            var stylesheet = document.createElement("link");
+            stylesheet.id = "ironlab-recovery-css";
+            stylesheet.rel = "stylesheet";
+            stylesheet.href = "/assets/index.css?safari-recovery=20260812";
+            document.head.appendChild(stylesheet);
+          }
+          var recoveryUrl = "/assets/" + "index.js?safari-recovery=20260812";
+          import(/* @vite-ignore */ recoveryUrl)
+            .catch(function (error) {
+              report(error && error.message ? error.message : "Safari could not start the fresh Iron Lab module.");
+            });
+        }, 3000);
+
+        window.setTimeout(function () {
+          if (document.getElementById("ironlab-startup-status")) report("The app is taking longer than expected to start. A diagnostic was sent automatically.");
+        }, 9000);
+      })();
+    </script>
   </head>
   <body>
+    <div id="ironlab-startup-status"><div><strong>Opening Iron Lab</strong><p>Loading your workout tracker…</p></div></div>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script
+      type="module"
+      src="/src/main.tsx"
+      onerror="window.__ironlabStartupReport && window.__ironlabStartupReport('Safari could not load the Iron Lab application module.')"></script>
     <script
       defer
       src="%VITE_ANALYTICS_ENDPOINT%/umami"

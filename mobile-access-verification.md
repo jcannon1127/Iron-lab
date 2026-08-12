@@ -15,3 +15,7 @@ After the shared preview sync, the live `/`, `/login`, `/sw.js`, and `/api/healt
 ## Safari Asset Recovery Deployment
 
 The Safari recovery deployment compiles a conservative Safari 13-compatible bundle at stable asset URLs. Current JavaScript is served as `/assets/index.js` with `Cache-Control: no-store, max-age=0`. Requests for a removed bundle now return HTTP 404 instead of HTML, preventing an old Safari shell from attempting to parse the login page as JavaScript. A fresh post-deployment browser visit rendered the login page with no console errors.
+
+## Safari Style Recovery
+
+When a stalled Safari module triggers the fresh application import, the recovery code now explicitly appends the current `/assets/index.css` stylesheet before starting the app. The live login screen rendered with the standard Iron Lab dark, orange-and-black design and no browser-console errors after deployment.

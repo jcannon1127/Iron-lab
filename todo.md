@@ -142,3 +142,6 @@
 - [x] Add historical date entry: date picker on log form so users can enter past sessions (swim and bench)
 - [x] Investigate why a second user cannot access the public Iron Lab site while Jeff can
 - [x] Fix iPhone Safari blank screen by removing stale service-worker and client-cache failure paths
+- [ ] Restore Jeff's own access after the shared-project preview sync
+- [ ] Resolve Safari-only black screen while the Manus in-app browser renders Iron Lab correctly
+- [x] Compile a Safari-compatible bundle and prevent stale JavaScript asset fallbacks from returning HTML

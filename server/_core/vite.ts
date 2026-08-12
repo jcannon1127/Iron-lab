@@ -60,11 +60,19 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath, {
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith("index.html") || filePath.endsWith("sw.js")) {
+      // Iron Lab is a dynamic tracker. Serving stale HTML, JS, or CSS can
+      // leave Safari with an HTML/asset version mismatch and a blank page.
+      if (/\.(html|js|css)$/.test(filePath)) {
         res.setHeader("Cache-Control", "no-store, max-age=0");
       }
     },
   }));
+
+  // An old build may request a removed bundle. Return a true 404 rather than
+  // returning index.html as JavaScript, which crashes the React bootstrap.
+  app.use("/assets", (_req, res) => {
+    res.status(404).type("text/plain").send("Asset not found");
+  });
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {

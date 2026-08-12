@@ -167,6 +167,18 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Safari receives a conservative, transpiled bundle rather than relying on
+    // the newest browser syntax target.
+    target: "safari13",
+    rollupOptions: {
+      output: {
+        // Stable browser asset URLs, paired with no-store headers in the server,
+        // prevent an old app shell from requesting a now-deleted hashed bundle.
+        entryFileNames: "assets/[name].js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: "assets/[name][extname]",
+      },
+    },
   },
   server: {
     host: true,

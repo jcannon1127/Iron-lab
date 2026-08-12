@@ -6,6 +6,7 @@ import type { TrpcContext } from "./_core/context";
 vi.mock("./db", () => ({
   getUserSessions: vi.fn().mockResolvedValue([]),
   getSessionByDate: vi.fn().mockResolvedValue(undefined),
+  getSessionsByDateAndSport: vi.fn().mockResolvedValue(undefined),
   getSessionSets: vi.fn().mockResolvedValue([]),
   createSession: vi.fn().mockResolvedValue({
     id: 1,
@@ -89,8 +90,29 @@ describe("workout.getTodaySession", () => {
     expect(result.goal).toBe(100);
     expect(result.totalReps).toBe(0);
     expect(db.createSession).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 1, goal: 100 })
+      expect.objectContaining({ userId: 1, goal: 100, sport: "bench_press" })
     );
+  });
+
+  it("uses the bench session when swimming and bench sessions share a date", async () => {
+    vi.mocked(db.getSessionsByDateAndSport).mockResolvedValue({
+      id: 12,
+      userId: 1,
+      date: new Date().toISOString().slice(0, 10),
+      label: "Today",
+      goal: 100,
+      totalReps: 25,
+      totalVolume: 2250,
+      completed: false,
+      sport: "bench_press",
+      totalYards: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+    const caller = appRouter.createCaller(createAuthContext());
+    const result = await caller.workout.getTodaySession();
+    expect(result.id).toBe(12);
+    expect(db.getSessionsByDateAndSport).toHaveBeenCalledWith(1, expect.any(String), "bench_press");
   });
 });
 
@@ -145,7 +167,7 @@ describe("workout.addSet", () => {
 
 describe("workout.resetToday", () => {
   it("deletes today's session when one exists", async () => {
-    vi.mocked(db.getSessionByDate).mockResolvedValue({
+    vi.mocked(db.getSessionsByDateAndSport).mockResolvedValue({
       id: 1,
       userId: 1,
       date: "2026-07-12",
@@ -154,6 +176,8 @@ describe("workout.resetToday", () => {
       totalReps: 35,
       totalVolume: 2325,
       completed: false,
+      sport: "bench_press",
+      totalYards: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

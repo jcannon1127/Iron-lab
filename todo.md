@@ -147,6 +147,10 @@
 - [ ] Inspect live iPhone Safari asset requests to identify why the app shell remains blank
 - [ ] Add a visible Safari startup diagnostic and recovery screen for bootstrap failures
 - [ ] Restore the orange-and-black Iron Lab stylesheet in Safari after module recovery
+- [ ] Fix the incomplete/condensed mobile session summary layout visible after the latest sync
+- [x] Investigate and recover workout sets reported as overwritten or deleted during recent entry
+- [x] Prevent set-entry mutations from replacing existing sets unintentionally
+- [x] Scope bench session queries and mutations to `bench_press` so same-day swim sessions cannot receive bench sets
 - [x] Explicitly load the current stylesheet before Safari's dynamic module recovery
 - [x] Add a cache-bypassing Safari dynamic-import fallback for stalled module startup
 - [x] Capture Safari module-script resource failures with a document-level listener

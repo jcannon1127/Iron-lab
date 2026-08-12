@@ -59,7 +59,7 @@ export const appRouter = router({
   workout: router({
     /** Get all sessions for the current user with their sets (newest first) */
     getSessions: protectedProcedure.query(async ({ ctx }) => {
-      const sessions = await getUserSessions(ctx.user.id);
+      const sessions = (await getUserSessions(ctx.user.id)).filter((session) => session.sport === "bench_press");
       const withSets = await Promise.all(
         sessions.map(async (session) => {
           const sets = await getSessionSets(session.id);
@@ -75,7 +75,7 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const today = input?.date ?? new Date().toISOString().slice(0, 10);
         const isToday = today === new Date().toISOString().slice(0, 10);
-        let session = await getSessionByDate(ctx.user.id, today);
+        let session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         // Only auto-create session for today, not for past dates
         if (!session && isToday) {
           session = await createSession({
@@ -86,6 +86,7 @@ export const appRouter = router({
             totalReps: 0,
             totalVolume: 0,
             completed: false,
+            sport: "bench_press",
           });
         }
         if (!session) return { id: 0, date: today, label: formatDateLabel(today), goal: REP_GOAL, totalReps: 0, totalVolume: 0, completed: false, sets: [], userId: ctx.user.id, createdAt: new Date(), updatedAt: new Date(), sport: 'bench_press' as const, totalYards: 0, swimYardsGoal: 1500 };
@@ -102,7 +103,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const today = input.date ?? new Date().toISOString().slice(0, 10);
-        let session = await getSessionByDate(ctx.user.id, today);
+        let session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) {
           session = await createSession({
             userId: ctx.user.id,
@@ -112,6 +113,7 @@ export const appRouter = router({
             totalReps: 0,
             totalVolume: 0,
             completed: false,
+            sport: "bench_press",
           });
         }
         const volume = input.weight * input.reps;
@@ -121,6 +123,7 @@ export const appRouter = router({
           weight: input.weight,
           reps: input.reps,
           volume,
+          sport: "bench_press",
           performedAt: Date.now(),
         });
         const allSets = await getSessionSets(session.id);
@@ -135,7 +138,7 @@ export const appRouter = router({
       .input(z.object({ setId: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         const today = new Date().toISOString().slice(0, 10);
-        const session = await getSessionByDate(ctx.user.id, today);
+        const session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) throw new Error("No session found for today");
         await deleteSet(input.setId, ctx.user.id);
         const allSets = await getSessionSets(session.id);
@@ -151,7 +154,7 @@ export const appRouter = router({
       .input(z.object({ setId: z.number().int().positive(), weight: z.number().positive(), reps: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
         const today = new Date().toISOString().slice(0, 10);
-        const session = await getSessionByDate(ctx.user.id, today);
+        const session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) throw new Error("No session found for today");
         await editSet(input.setId, ctx.user.id, input.weight, input.reps);
         const allSets = await getSessionSets(session.id);
@@ -167,7 +170,7 @@ export const appRouter = router({
       .input(z.object({ goal: z.number().int().min(1).max(1000) }))
       .mutation(async ({ ctx, input }) => {
         const today = new Date().toISOString().slice(0, 10);
-        let session = await getSessionByDate(ctx.user.id, today);
+        let session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) {
           session = await createSession({
             userId: ctx.user.id,
@@ -177,6 +180,7 @@ export const appRouter = router({
             totalReps: 0,
             totalVolume: 0,
             completed: false,
+            sport: "bench_press",
           });
         } else {
           // Persist the goal column AND recompute completed flag
@@ -209,7 +213,7 @@ export const appRouter = router({
     /** Reset (delete) today's session */
     resetToday: protectedProcedure.mutation(async ({ ctx }) => {
       const today = new Date().toISOString().slice(0, 10);
-      const session = await getSessionByDate(ctx.user.id, today);
+      const session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
       if (session) await deleteSession(session.id, ctx.user.id);
       await recomputePRsForUser(ctx.user.id);
       return { success: true };

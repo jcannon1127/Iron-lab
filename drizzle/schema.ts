@@ -121,7 +121,7 @@ export const userProfiles = pgTable("user_profiles", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   // Swimming additions
-  poolLength: poolLengthEnum("pool_length").notNull().default("25yd"),
+  poolLength: poolLengthEnum("poolLength").notNull().default("25yd"),
   swimYardsGoal: integer("swimYardsGoal").notNull().default(1500),
 });
 

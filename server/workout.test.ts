@@ -40,6 +40,16 @@ vi.mock("./db", () => ({
   deleteTemplate: vi.fn().mockResolvedValue(undefined),
   getUserProfile: vi.fn().mockResolvedValue(null),
   upsertUserProfile: vi.fn().mockResolvedValue(null),
+  updatePoolLengthAndGoal: vi.fn().mockResolvedValue({
+    id: 1,
+    userId: 1,
+    displayName: null,
+    leaderboardOptIn: false,
+    poolLength: "25yd",
+    swimYardsGoal: 1500,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }),
   getUserPRs: vi.fn().mockResolvedValue([]),
   checkAndUpdatePR: vi.fn().mockResolvedValue(false),
   recomputePRsForUser: vi.fn().mockResolvedValue(undefined),
@@ -186,5 +196,22 @@ describe("workout.resetToday", () => {
     const result = await caller.workout.resetToday();
     expect(result.success).toBe(true);
     expect(db.deleteSession).toHaveBeenCalledWith(1, 1);
+  });
+});
+
+describe("profile settings", () => {
+  it("persists leaderboard settings through the profile update procedure", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await caller.profile.update({ displayName: "Jeff Cannon", leaderboardOptIn: true });
+    expect(db.upsertUserProfile).toHaveBeenCalledWith(1, {
+      displayName: "Jeff Cannon",
+      leaderboardOptIn: true,
+    });
+  });
+
+  it("persists pool length and yardage goal through the swim settings procedure", async () => {
+    const caller = appRouter.createCaller(createAuthContext());
+    await caller.profile.updateSwimSettings({ poolLength: "25yd", swimYardsGoal: 1500 });
+    expect(db.updatePoolLengthAndGoal).toHaveBeenCalledWith(1, "25yd", 1500);
   });
 });

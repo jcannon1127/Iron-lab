@@ -151,6 +151,10 @@
 - [x] Investigate and recover workout sets reported as overwritten or deleted during recent entry
 - [x] Prevent set-entry mutations from replacing existing sets unintentionally
 - [x] Scope bench session queries and mutations to `bench_press` so same-day swim sessions cannot receive bench sets
+- [x] Repair the live `user_profiles` schema mismatch blocking leaderboard/profile settings saves
+- [x] Verify profile and leaderboard settings save through the deployed application path
+- [x] Add regression coverage for `poolLength` and `swimYardsGoal` profile persistence
+- [x] Align the ORM profile mapping with the existing live `poolLength` column
 - [x] Explicitly load the current stylesheet before Safari's dynamic module recovery
 - [x] Add a cache-bypassing Safari dynamic-import fallback for stalled module startup
 - [x] Capture Safari module-script resource failures with a document-level listener

@@ -135,9 +135,9 @@ export const appRouter = router({
 
     /** Delete a set and recalculate totals */
     deleteSet: protectedProcedure
-      .input(z.object({ setId: z.number().int().positive() }))
+      .input(z.object({ setId: z.number().int().positive(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }))
       .mutation(async ({ ctx, input }) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = input.date ?? new Date().toISOString().slice(0, 10);
         const session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) throw new Error("No session found for today");
         await deleteSet(input.setId, ctx.user.id);
@@ -151,9 +151,9 @@ export const appRouter = router({
 
     /** Edit a set's weight and reps, recalculate session totals */
     editSet: protectedProcedure
-      .input(z.object({ setId: z.number().int().positive(), weight: z.number().positive(), reps: z.number().int().positive() }))
+      .input(z.object({ setId: z.number().int().positive(), weight: z.number().positive(), reps: z.number().int().positive(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }))
       .mutation(async ({ ctx, input }) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = input.date ?? new Date().toISOString().slice(0, 10);
         const session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) throw new Error("No session found for today");
         await editSet(input.setId, ctx.user.id, input.weight, input.reps);
@@ -167,9 +167,9 @@ export const appRouter = router({
 
     /** Update the rep goal for today's session */
     updateGoal: protectedProcedure
-      .input(z.object({ goal: z.number().int().min(1).max(1000) }))
+      .input(z.object({ goal: z.number().int().min(1).max(1000), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }))
       .mutation(async ({ ctx, input }) => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = input.date ?? new Date().toISOString().slice(0, 10);
         let session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
         if (!session) {
           session = await createSession({
@@ -210,14 +210,16 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    /** Reset (delete) today's session */
-    resetToday: protectedProcedure.mutation(async ({ ctx }) => {
-      const today = new Date().toISOString().slice(0, 10);
+    /** Reset (delete) the selected session */
+    resetToday: protectedProcedure
+      .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+      const today = input?.date ?? new Date().toISOString().slice(0, 10);
       const session = await getSessionsByDateAndSport(ctx.user.id, today, "bench_press");
       if (session) await deleteSession(session.id, ctx.user.id);
       await recomputePRsForUser(ctx.user.id);
       return { success: true };
-    }),
+      }),
 
     /** Get user's personal records */
     getPRs: protectedProcedure.query(async ({ ctx }) => {

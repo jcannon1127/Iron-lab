@@ -374,7 +374,11 @@ export async function getDailyLeaderboard(date: string): Promise<
       userProfiles,
       and(eq(userProfiles.userId, workoutSessions.userId), eq(userProfiles.leaderboardOptIn, true))
     )
-    .where(eq(workoutSessions.date, date))
+    .where(and(
+      eq(workoutSessions.date, date),
+      eq(workoutSessions.sport, "bench_press"),
+      gt(workoutSessions.totalVolume, 0),
+    ))
     .orderBy(desc(workoutSessions.totalVolume));
 }
 

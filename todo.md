@@ -142,12 +142,18 @@
 - [x] Add historical date entry: date picker on log form so users can enter past sessions (swim and bench)
 - [x] Investigate why a second user cannot access the public Iron Lab site while Jeff can
 - [x] Fix iPhone Safari blank screen by removing stale service-worker and client-cache failure paths
-- [ ] Restore Jeff's own access after the shared-project preview sync
-- [ ] Resolve Safari-only black screen while the Manus in-app browser renders Iron Lab correctly
-- [ ] Inspect live iPhone Safari asset requests to identify why the app shell remains blank
-- [ ] Add a visible Safari startup diagnostic and recovery screen for bootstrap failures
-- [ ] Restore the orange-and-black Iron Lab stylesheet in Safari after module recovery
-- [ ] Fix the incomplete/condensed mobile session summary layout visible after the latest sync
+- [x] Restore Jeff's own access after the shared-project preview sync
+- [x] Resolve Safari-only black screen while the Manus in-app browser renders Iron Lab correctly
+- [x] Inspect live iPhone Safari asset requests to identify why the app shell remains blank
+- [x] Add a visible Safari startup diagnostic and recovery screen for bootstrap failures
+- [x] Restore the orange-and-black Iron Lab stylesheet in Safari after module recovery
+- [x] Fix the incomplete/condensed mobile session summary layout visible after the latest sync (confirmed data-mixing issue, not a persistent layout defect)
+- [x] Add Live Workout / Log Past Workout entry mode so rest timers run only for live tracking
+- [x] Audit and reconcile Holly’s duplicate Aug. 12 bench history records (one stored session; duplicate cards came from UTC date handling)
+- [x] Filter invalid zero-volume and wrong-sport rows from the bench leaderboard
+- [x] Use the user’s local calendar date for current-session queries to avoid empty UTC-next-day sessions and duplicate history cards
+- [x] Pass the selected local session date to bench set mutations and reset actions
+- [x] Default post-workout entry to timer-free mode and provide an explicit Live Workout mode for rest timing
 - [x] Investigate and recover workout sets reported as overwritten or deleted during recent entry
 - [x] Prevent set-entry mutations from replacing existing sets unintentionally
 - [x] Scope bench session queries and mutations to `bench_press` so same-day swim sessions cannot receive bench sets

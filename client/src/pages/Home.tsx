@@ -708,22 +708,22 @@ function Tracker() {
   const [currentSport, setCurrentSport] = useState<"bench" | "swim">("bench");
 
   // ── Date state (must be before queries) ─────────────────────────────────────
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = useMemo(() => {
+    const localNow = new Date();
+    const localOffsetMs = localNow.getTimezoneOffset() * 60_000;
+    return new Date(localNow.getTime() - localOffsetMs).toISOString().slice(0, 10);
+  }, []);
   const [swimSessionDate, setSwimSessionDate] = useState(todayStr);
   const [benchSessionDate, setBenchSessionDate] = useState(todayStr);
 
   // ── Bench press queries ──────────────────────────────────────────────────────
-  const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery(
-    benchSessionDate !== todayStr ? { date: benchSessionDate } : undefined
-  );
+  const { data: todayData, isLoading: todayLoading } = trpc.workout.getTodaySession.useQuery({ date: benchSessionDate });
   const { data: allSessions, isLoading: sessionsLoading } = trpc.workout.getSessions.useQuery(undefined);
 
   // ── Swim queries ─────────────────────────────────────────────────────────────
-  const { data: swimTodayData, isLoading: swimTodayLoading } = trpc.swim.getTodaySession.useQuery(
-    swimSessionDate !== todayStr ? { date: swimSessionDate } : undefined
-  );
+  const { data: swimTodayData, isLoading: swimTodayLoading } = trpc.swim.getTodaySession.useQuery({ date: swimSessionDate });
   const { data: swimSessions, isLoading: swimSessionsLoading } = trpc.swim.getSessions.useQuery(undefined);
-  const { data: swimLeaderboard } = trpc.swim.leaderboard.useQuery({ date: new Date().toISOString().slice(0, 10) });
+  const { data: swimLeaderboard } = trpc.swim.leaderboard.useQuery({ date: todayStr });
 
   // ── Swim mutations ────────────────────────────────────────────────────────────
   const addBlockMutation = trpc.swim.addBlock.useMutation({
@@ -817,7 +817,7 @@ function Tracker() {
       isWarmup: swimIsWarmup,
       isCooldown: swimIsCooldown,
       swimYardsGoal,
-      ...(swimSessionDate !== todayStr ? { date: swimSessionDate } : {}),
+      date: swimSessionDate,
     }, {
       onSuccess: (data) => {
         toast.success(`+${data.blockYards} yards logged!`);
@@ -840,7 +840,7 @@ function Tracker() {
       setSwimGoalInput(String(profile.swimYardsGoal ?? 1500));
     }
   }, [profile]);
-  const { data: dailyBoard } = trpc.leaderboard.daily.useQuery({ date: new Date().toISOString().slice(0, 10) });
+  const { data: dailyBoard } = trpc.leaderboard.daily.useQuery({ date: todayStr });
   const { data: allTimeBoard } = trpc.leaderboard.allTime.useQuery(undefined);
   const updateProfileMutation = trpc.profile.update.useMutation({
     onSuccess: () => {
@@ -923,10 +923,10 @@ function Tracker() {
   const goalAchieved = todayData?.completed ?? false;
   const todayLabel = todayData?.label ?? new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const activeBenchDate = todayData?.date ?? benchSessionDate;
   const pastSessions = useMemo(
-    () => (allSessions ?? []).filter((s) => s.date !== today).sort((a, b) => b.date.localeCompare(a.date)),
-    [allSessions, today]
+    () => (allSessions ?? []).filter((s) => s.date !== activeBenchDate).sort((a, b) => b.date.localeCompare(a.date)),
+    [allSessions, activeBenchDate]
   );
   const compareSession = pastSessions[0] ?? null;
   const volumeDiff = compareSession ? totalVolume - compareSession.totalVolume : null;
@@ -944,6 +944,7 @@ function Tracker() {
   const [timerDuration, setTimerDuration] = useState(90);
   const [timerActive, setTimerActive] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
+  const [entryMode, setEntryMode] = useState<"past" | "live">("past");
 
   // Modals
   const [showShare, setShowShare] = useState(false);
@@ -974,20 +975,19 @@ function Tracker() {
     const reps = parseInt(repsInput, 10);
     if (!weight || weight <= 0 || isNaN(weight)) { toast.error("Enter a valid weight"); weightRef.current?.focus(); return; }
     if (!reps || reps <= 0 || isNaN(reps)) { toast.error("Enter valid reps"); return; }
-    addSetMutation.mutate({ weight, reps, ...(benchSessionDate !== todayStr ? { date: benchSessionDate } : {}) }, {
+    addSetMutation.mutate({ weight, reps, date: benchSessionDate }, {
       onSuccess: (data) => {
         setNewSetId(data?.set?.id ?? null);
         setTimeout(() => setNewSetId(null), 600);
-        setTimerActive(true);
+        if (entryMode === "live") setTimerActive(true);
         // Check for PRs after the set is saved
         if (data?.set?.id) {
-          const today = new Date().toISOString().slice(0, 10);
           checkPRsMutation.mutate({
             setId: data.set.id,
             weight,
             reps,
             sessionVolume: data.totalVolume,
-            sessionDate: today,
+            sessionDate: benchSessionDate,
           });
         }
       },
@@ -995,7 +995,7 @@ function Tracker() {
     setWeightInput("");
     setRepsInput("");
     weightRef.current?.focus();
-  }, [weightInput, repsInput, addSetMutation, checkPRsMutation]);
+  }, [weightInput, repsInput, addSetMutation, checkPRsMutation, benchSessionDate, entryMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter") handleAddSet(); };
   const isMutating = addSetMutation.isPending || deleteSetMutation.isPending || editSetMutation.isPending || resetMutation.isPending;
@@ -1015,7 +1015,7 @@ function Tracker() {
       {showGoalPicker && (
         <GoalPicker
           current={REP_GOAL}
-          onSave={(g) => updateGoalMutation.mutate({ goal: g })}
+          onSave={(g) => updateGoalMutation.mutate({ goal: g, date: benchSessionDate })}
           onClose={() => setShowGoalPicker(false)}
         />
       )}
@@ -1472,7 +1472,7 @@ function Tracker() {
                   </button>
                 )}
                 {setCount > 0 && (
-                  <button onClick={() => resetMutation.mutate()}
+                  <button onClick={() => resetMutation.mutate({ date: benchSessionDate })}
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
                     <RotateCcw className="w-3 h-3" /> Reset
                   </button>
@@ -1505,8 +1505,21 @@ function Tracker() {
               ))}
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/60 p-2">
+              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-1">Entry Mode</span>
+              <button onClick={() => { setEntryMode("past"); setTimerActive(false); }}
+                className={`px-3 py-1.5 rounded-md text-xs font-display font-semibold uppercase tracking-wide transition-colors ${entryMode === "past" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Log Past Workout
+              </button>
+              <button onClick={() => setEntryMode("live")}
+                className={`px-3 py-1.5 rounded-md text-xs font-display font-semibold uppercase tracking-wide transition-colors ${entryMode === "live" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Live Workout
+              </button>
+              <span className="text-xs text-muted-foreground ml-auto">{entryMode === "live" ? "Rest timer starts after each set" : "No rest timer while entering completed sets"}</span>
+            </div>
+
             {/* Rest Timer */}
-            {timerActive && (
+            {entryMode === "live" && timerActive && (
               <RestTimer
                 duration={timerDuration}
                 onDone={() => { setTimerActive(false); toast.info("Rest complete — time to lift!"); }}
@@ -1514,7 +1527,7 @@ function Tracker() {
             )}
 
             {/* Timer settings */}
-            {!timerActive && (
+            {entryMode === "live" && !timerActive && (
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowTimerSettings(!showTimerSettings)}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
@@ -1584,8 +1597,8 @@ function Tracker() {
                     reps={set.reps ?? 0}
                     volume={set.volume ?? 0}
                     index={i}
-                    onDelete={() => deleteSetMutation.mutate({ setId: set.id })}
-                    onEdit={(w, r) => editSetMutation.mutate({ setId: set.id, weight: w, reps: r })}
+                    onDelete={() => deleteSetMutation.mutate({ setId: set.id, date: benchSessionDate })}
+                    onEdit={(w, r) => editSetMutation.mutate({ setId: set.id, weight: w, reps: r, date: benchSessionDate })}
                     isNew={set.id === newSetId}
                     prLabels={prSetMap.get(set.id) ?? []}
                   />

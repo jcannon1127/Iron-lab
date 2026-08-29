@@ -5,7 +5,7 @@ import HealthKit
 /**
  * IronLabHealthPlugin
  *
- * Native Capacitor plugin that writes strength workouts to Apple HealthKit.
+ * Native Capacitor plugin that writes strength and swimming workouts to Apple HealthKit.
  * Registered as "IronLabHealth" — matches the registerPlugin() call in useHealthKit.ts.
  *
  * To enable in Xcode:
@@ -89,9 +89,12 @@ public class IronLabHealthPlugin: CAPPlugin, CAPBridgedPlugin {
                 hkMetadata[key] = value
             }
 
-            // Create workout configuration
+            // Create workout configuration. Bench sessions use traditional
+            // strength training; swimming sessions preserve their sport in
+            // Apple Health instead of being saved as strength workouts.
             let config = HKWorkoutConfiguration()
-            config.activityType = .traditionalStrengthTraining
+            let activityType = call.getString("activityType") ?? "bench"
+            config.activityType = activityType == "swim" ? .swimming : .traditionalStrengthTraining
             config.locationType = .indoor
 
             let builder = HKWorkoutBuilder(healthStore: self.healthStore, configuration: config, device: .local())

@@ -167,3 +167,13 @@
 - [x] Add server-side capture for Safari bootstrap error diagnostics
 - [x] Add a legacy Safari bundle bridge so cached hashed entry URLs start the current app
 - [x] Compile a Safari-compatible bundle and prevent stale JavaScript asset fallbacks from returning HTML
+- [ ] Verify the live Iron Lab site is healthy
+- [ ] Prepare and publish a confirmed GitHub repository backup
+- [ ] Push the complete project backup to private GitHub repository jcannon1127/Iron-lab
+- [ ] Audit and prepare the current Iron Lab iOS wrapper for TestFlight and App Store submission
+- [x] Create current App Store submission brief covering swimming, native sign-in, and HealthKit
+- [ ] Verify IronLabHealthPlugin.swift is included in the Xcode App target and HealthKit writes are sport-aware
+- [ ] Test and build the sport-aware HealthKit update before the next TestFlight archive
+- [ ] Sync the iOS wrapper against the current `dist/public` production bundle
+- [ ] Resolve the Google sign-in iOS packaging warning and verify the native plugin is linked for the Xcode archive
+- [ ] Resolve or replace the Apple sign-in plugin version mismatch with Capacitor 8 before TestFlight

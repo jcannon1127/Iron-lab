@@ -1397,6 +1397,15 @@ function Tracker() {
                   <span>🏆</span> Session Complete
                 </div>
               )}
+              {swimSets.length > 0 && (
+                <HealthKitSaveButton
+                  workoutStart={swimSets[0]?.createdAt ? new Date(swimSets[0].createdAt) : undefined}
+                  workoutEnd={swimSets[swimSets.length - 1]?.createdAt ? new Date(swimSets[swimSets.length - 1].createdAt) : undefined}
+                  totalYards={swimTotalYards}
+                  sport="swim"
+                  onSave={() => toast.success("Swim saved to Apple Health")}
+                />
+              )}
 
               {/* Pool Settings Modal */}
               {showSwimSettings && (

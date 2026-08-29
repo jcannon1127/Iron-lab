@@ -28,10 +28,8 @@ open App.xcodeproj
 - Add **HealthKit**
 - This automatically links the HealthKit framework
 
-### 3. Register the Custom IronLabHealth Plugin
-The `IronLabHealthPlugin.swift` file is already in `App/App/`. Xcode should pick it up automatically. If not:
-- Right-click `App` group in the file navigator
-- **Add Files to "App"** → select `IronLabHealthPlugin.swift`
+### 3. Confirm the Custom IronLabHealth Plugin
+The `IronLabHealthPlugin.swift` file is already included in the **App** target. In the Xcode file navigator, select the file and confirm **Target Membership → App** is checked.
 
 ### 4. Build & Run
 - Select your iPhone as the target device
@@ -56,7 +54,7 @@ iOS Plugins (auto-registered via Package.swift):
   └── capacitor-health          ← read Apple Health workouts
 
 Custom Native Plugin:
-  └── IronLabHealthPlugin.swift ← writes strength workouts to HealthKit
+      └── IronLabHealthPlugin.swift ← writes bench and swimming workouts to HealthKit
       JS bridge: registerPlugin("IronLabHealth") in useHealthKit.ts
 ```
 
@@ -70,11 +68,11 @@ Custom Native Plugin:
 
 **Write** (via `IronLabHealthPlugin`):
 - Permissions: `WRITE_WORKOUTS`
-- Activity type: `HKWorkoutActivityType.traditionalStrengthTraining`
-- Saves each completed bench press session with:
+- Activity type: `HKWorkoutActivityType.traditionalStrengthTraining` for bench sessions and `.swimming` for swim sessions
+- Saves each completed session with:
   - Start/end time
   - Estimated calories burned (MET × body weight × duration)
-  - Metadata: totalVolumeLbs, maxWeightLbs
+  - Metadata: totalVolumeLbs/maxWeightLbs for bench and totalYards for swimming
 
 ---
 

@@ -17,6 +17,8 @@ interface HealthKitSyncProps {
   workoutEnd?: Date;
   totalVolumeLbs?: number;
   maxWeightLbs?: number;
+  totalYards?: number;
+  sport?: "bench" | "swim";
   bodyWeightLbs?: number;
 }
 
@@ -59,6 +61,8 @@ export function HealthKitSaveButton({
   workoutEnd,
   totalVolumeLbs,
   maxWeightLbs,
+  totalYards,
+  sport = "bench",
   bodyWeightLbs,
   onSave,
 }: HealthKitSyncProps) {
@@ -73,10 +77,12 @@ export function HealthKitSaveButton({
     const success = await saveWorkout({
       startDate: workoutStart,
       endDate: workoutEnd,
+      sport,
       bodyWeightLbs,
       metadata: {
         ...(totalVolumeLbs ? { totalVolumeLbs: String(totalVolumeLbs) } : {}),
         ...(maxWeightLbs ? { maxWeightLbs: String(maxWeightLbs) } : {}),
+        ...(totalYards ? { totalYards: String(totalYards) } : {}),
       },
     });
     setStatus(success ? "saved" : "error");

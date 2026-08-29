@@ -3,7 +3,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 const config: CapacitorConfig = {
   appId: "com.yogademocracy.ironlab",
   appName: "Iron Lab",
-  webDir: "dist/client",
+  webDir: "dist/public",
   // In production, load the live server so users always get the latest version
   // without needing an App Store update. Comment this out for fully offline builds.
   server: {

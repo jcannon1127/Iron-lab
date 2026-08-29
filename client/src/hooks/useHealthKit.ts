@@ -3,7 +3,7 @@
  *
  * Provides:
  *  - requestPermissions(): ask for READ_WORKOUTS + WRITE_WORKOUTS
- *  - saveWorkout(params): write a strength workout to Apple Health
+ *  - saveWorkout(params): write a bench or swimming workout to Apple Health
  *  - isAvailable: true when running on iOS native (Capacitor)
  *
  * The read path uses capacitor-health.
@@ -21,6 +21,7 @@ interface IronLabHealthPlugin {
   saveStrengthWorkout(options: {
     startDate: string; // ISO 8601
     endDate: string;   // ISO 8601
+    activityType?: "bench" | "swim";
     totalEnergyBurned?: number; // kcal estimate
     metadata?: Record<string, string>;
   }): Promise<{ success: boolean; id?: string }>;
@@ -38,6 +39,7 @@ function estimateCalories(durationMinutes: number, weightKg = 80): number {
 export interface SaveWorkoutParams {
   startDate: Date;
   endDate: Date;
+  sport?: "bench" | "swim";
   /** User's body weight in lbs (for calorie estimate). Defaults to 176 lbs / 80 kg */
   bodyWeightLbs?: number;
   /** Optional metadata to attach (e.g. totalVolume, maxWeight) */
@@ -110,6 +112,7 @@ export function useHealthKit() {
         const result = await IronLabHealth.saveStrengthWorkout({
           startDate: params.startDate.toISOString(),
           endDate: params.endDate.toISOString(),
+          activityType: params.sport ?? "bench",
           totalEnergyBurned: calories,
           metadata: {
             "Iron Lab": "true",

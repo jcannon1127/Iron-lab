@@ -26,9 +26,9 @@
 	<true/>
 	<!-- HealthKit permission strings (required by App Store) -->
 	<key>NSHealthShareUsageDescription</key>
-	<string>Iron Lab reads your workout history from Apple Health to show your fitness progress alongside your bench press data.</string>
+		<string>Iron Lab reads your workout history from Apple Health to show your strength and swimming progress alongside your Iron Lab data.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Iron Lab saves your bench press workouts to Apple Health so they appear in your Activity and Health apps.</string>
+		<string>Iron Lab saves your bench press and swimming workouts to Apple Health so they appear in your Activity and Health apps.</string>
 	<!-- Portrait-only for phone (landscape allowed on iPad) -->
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
